@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Share</title>
+    <!-- Replace 'YOUR_API_KEY' with your actual Google Maps API key -->
+    <script src="https://maps.google.com/maps/api/js?key=AIzaSyBjTJO9xTwnHkQaBgFnZsGLVxbwWycazx8"></script>
+    <style>
+        #map {
+            height: 400px; /* Set the height of the map */
+            width: 100%;   /* Set the width of the map */
+        }
+    </style>
+</head>
+<body>
+    <h1>Location Share</h1>
+    <div id="map"></div>
+
+    <script>
+        // Get the session ID from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session');
+        if (!sessionId) {
+            alert("Please provide a session ID in the URL, e.g., ?session=abc123");
+        }
+
+        // Initialize the Google Map
+        var map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 0, lng: 0 },
+            zoom: 2 // Start with a world view
+        });
+
+        // Function to send user's location to the backend
+        function sendLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var lat = position.coords.latitude;
+                    var lng = position.coords.longitude;
+                    // Replace 'https://your-vercel-app.com' with your actual backend URL
+                    fetch(`https://your-vercel-app.com/locations/${sessionId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ lat, lng })
+                    });
+                }, function(error) {
+                    console.error("Error getting location:", error);
+                });
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        // Function to update the map with locations from the backend
+        var markers = [];
+
+        function updateMap() {
+            // Replace 'https://your-vercel-app.com' with your actual backend URL
+            fetch(`https://your-vercel-app.com/locations/${sessionId}`, {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Clear existing markers
+                markers.forEach(marker => marker.setMap(null));
+                markers = [];
+
+                // Add new markers
+                data.locations.forEach(loc => {
+                    var marker = new google.maps.Marker({
+                        position: { lat: loc.lat, lng: loc.lng },
+                        map: map
+                    });
+                    markers.push(marker);
+                });
+            })
+            .catch(error => console.error("Error fetching locations:", error));
+        }
+
+        // Send location and update map immediately
+        sendLocation();
+        updateMap();
+
+        // Set intervals to send location and update map every 5 seconds
+        setInterval(sendLocation, 5000);
+        setInterval(updateMap, 5000);
+    </script>
+</body>
+</html>
