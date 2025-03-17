@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Location Share</title>
     <!-- Replace 'YOUR_API_KEY' with your actual Google Maps API key -->
+
    <script async src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&callback=initMap"></script> 
+
     <style>
         #map {
             height: 400px; /* Set the height of the map */
@@ -18,6 +20,10 @@
     <div id="map"></div>
 
     <script>
+
+// *** NEW: Added initMap function to initialize the map and related functionality ***
+        function initMap() {
+
         // Get the session ID from the URL
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session');
@@ -86,6 +92,7 @@
         // Set intervals to send location and update map every 5 seconds
         setInterval(sendLocation, 5000);
         setInterval(updateMap, 5000);
+}
     </script>
 </body>
 </html>
