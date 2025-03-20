@@ -19,12 +19,10 @@
     <h1>Location Share</h1>
     <div id="map"></div>
 
-    <script>
-
-// *** NEW: Added initMap function to initialize the map and related functionality ***
-
 <script>
     function initMap() {
+        console.log("initMap started");
+
         // Get the session ID from the URL
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session');
@@ -32,26 +30,13 @@
             alert("Please provide a session ID in the URL, e.g., ?session=abc123");
         }
 
-        // Initialize the Google Map with a default center
+        // Initialize the Google Map
+        console.log("Attempting to initialize map...");
         var map = new google.maps.Map(document.getElementById('map'), {
-            center: { lat: 0, lng: 0 }, // Default until geolocation updates it
-            zoom: 2 // Start with a world view
+            center: { lat: 0, lng: 0 },
+            zoom: 2
         });
-
-        // Function to center and zoom to the user's location
-        function setMapToUserLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    var userLat = position.coords.latitude;
-                    var userLng = position.coords.longitude;
-                    // Update map center and zoom
-                    map.setCenter({ lat: userLat, lng: userLng });
-                    map.setZoom(15); // Zoom level 15 shows street-level detail
-                }, function(error) {
-                    console.error("Error getting initial location:", error);
-                });
-            }
-        }
+        console.log("Map initialized successfully");
 
         // Function to send user's location to the backend
         function sendLocation() {
@@ -95,9 +80,6 @@
             })
             .catch(error => console.error("Error fetching locations:", error));
         }
-
-        // Set the map to the user's location on load
-        setMapToUserLocation();
 
         // Send location and update map immediately
         sendLocation();
