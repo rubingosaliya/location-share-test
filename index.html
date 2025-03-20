@@ -30,12 +30,15 @@
             alert("Please provide a session ID in the URL, e.g., ?session=abc123");
         }
 
-        // Prompt user for their name
+        // Prompt user for their name with extra logging
+        console.log("About to prompt for name...");
         let userName = prompt("Please enter your name:");
         if (!userName) {
-            userName = "Anonymous"; // Default if no name is provided
+            userName = "Anonymous";
+            console.log("No name entered, defaulting to Anonymous");
+        } else {
+            console.log("User entered name: " + userName);
         }
-        console.log("User name set to: " + userName);
 
         // Initialize the Google Map
         console.log("Attempting to initialize map...");
@@ -70,6 +73,7 @@
                 navigator.geolocation.getCurrentPosition(function(position) {
                     var lat = position.coords.latitude;
                     var lng = position.coords.longitude;
+                    console.log("Sending location with name: " + userName);
                     fetch(`https://location-share-backend-46pnnp8dn-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
                         method: 'POST',
                         headers: {
@@ -96,11 +100,12 @@
             .then(data => {
                 markers.forEach(marker => marker.setMap(null));
                 markers = [];
+                console.log("Updating map with locations:", data.locations);
                 data.locations.forEach(loc => {
                     var marker = new google.maps.Marker({
                         position: { lat: loc.lat, lng: loc.lng },
                         map: map,
-                        label: loc.name || "Unnamed" // Display name as label
+                        label: loc.name || "Unnamed"
                     });
                     markers.push(marker);
                 });
