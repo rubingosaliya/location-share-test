@@ -30,6 +30,13 @@
             alert("Please provide a session ID in the URL, e.g., ?session=abc123");
         }
 
+        // Prompt user for their name
+        let userName = prompt("Please enter your name:");
+        if (!userName) {
+            userName = "Anonymous"; // Default if no name is provided
+        }
+        console.log("User name set to: " + userName);
+
         // Initialize the Google Map
         console.log("Attempting to initialize map...");
         var map = new google.maps.Map(document.getElementById('map'), {
@@ -57,7 +64,7 @@
             }
         }
 
-        // Function to send user's location to the backend
+        // Function to send user's location and name to the backend
         function sendLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
@@ -68,7 +75,7 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ lat, lng })
+                        body: JSON.stringify({ lat, lng, name: userName })
                     });
                 }, function(error) {
                     console.error("Error getting location:", error);
@@ -78,7 +85,7 @@
             }
         }
 
-        // Function to update the map with locations from the backend
+        // Function to update the map with locations and names from the backend
         var markers = [];
 
         function updateMap() {
@@ -92,7 +99,8 @@
                 data.locations.forEach(loc => {
                     var marker = new google.maps.Marker({
                         position: { lat: loc.lat, lng: loc.lng },
-                        map: map
+                        map: map,
+                        label: loc.name || "Unnamed" // Display name as label
                     });
                     markers.push(marker);
                 });
