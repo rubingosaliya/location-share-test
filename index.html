@@ -22,8 +22,9 @@
     <script>
 
 // *** NEW: Added initMap function to initialize the map and related functionality ***
-        function initMap() {
 
+<script>
+    function initMap() {
         // Get the session ID from the URL
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session');
@@ -31,11 +32,26 @@
             alert("Please provide a session ID in the URL, e.g., ?session=abc123");
         }
 
-        // Initialize the Google Map
+        // Initialize the Google Map with a default center
         var map = new google.maps.Map(document.getElementById('map'), {
-            center: { lat: 0, lng: 0 },
+            center: { lat: 0, lng: 0 }, // Default until geolocation updates it
             zoom: 2 // Start with a world view
         });
+
+        // Function to center and zoom to the user's location
+        function setMapToUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var userLat = position.coords.latitude;
+                    var userLng = position.coords.longitude;
+                    // Update map center and zoom
+                    map.setCenter({ lat: userLat, lng: userLng });
+                    map.setZoom(15); // Zoom level 15 shows street-level detail
+                }, function(error) {
+                    console.error("Error getting initial location:", error);
+                });
+            }
+        }
 
         // Function to send user's location to the backend
         function sendLocation() {
@@ -43,7 +59,6 @@
                 navigator.geolocation.getCurrentPosition(function(position) {
                     var lat = position.coords.latitude;
                     var lng = position.coords.longitude;
-                    // Replace 'https://your-vercel-app.com' with your actual backend URL
                     fetch(`https://location-share-backend-46pnnp8dn-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
                         method: 'POST',
                         headers: {
@@ -63,17 +78,13 @@
         var markers = [];
 
         function updateMap() {
-            // Replace 'https://your-vercel-app.com' with your actual backend URL
             fetch(`https://location-share-backend-46pnnp8dn-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
                 method: 'GET'
             })
             .then(response => response.json())
             .then(data => {
-                // Clear existing markers
                 markers.forEach(marker => marker.setMap(null));
                 markers = [];
-
-                // Add new markers
                 data.locations.forEach(loc => {
                     var marker = new google.maps.Marker({
                         position: { lat: loc.lat, lng: loc.lng },
@@ -85,6 +96,9 @@
             .catch(error => console.error("Error fetching locations:", error));
         }
 
+        // Set the map to the user's location on load
+        setMapToUserLocation();
+
         // Send location and update map immediately
         sendLocation();
         updateMap();
@@ -92,7 +106,8 @@
         // Set intervals to send location and update map every 5 seconds
         setInterval(sendLocation, 5000);
         setInterval(updateMap, 5000);
-}
-    </script>
+    }
+</script>
+
 </body>
 </html>
