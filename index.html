@@ -22,17 +22,42 @@
 <script>
     function initMap() {
         console.log("initMap started");
+
+        // Get the session ID from the URL
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session');
         if (!sessionId) {
             alert("Please provide a session ID in the URL, e.g., ?session=abc123");
         }
+
+        // Initialize the Google Map
         console.log("Attempting to initialize map...");
         var map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 0, lng: 0 },
             zoom: 2
         });
         console.log("Map initialized successfully");
+
+        // Function to center and zoom to the user's location
+        function setMapToUserLocation() {
+            if (navigator.geolocation) {
+                console.log("Requesting user location...");
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var userLat = position.coords.latitude;
+                    var userLng = position.coords.longitude;
+                    console.log("User location: lat=" + userLat + ", lng=" + userLng);
+                    map.setCenter({ lat: userLat, lng: userLng });
+                    map.setZoom(15);
+                    console.log("Map zoomed to user location");
+                }, function(error) {
+                    console.error("Error getting user location:", error);
+                });
+            } else {
+                console.log("Geolocation not supported by this browser");
+            }
+        }
+
+        // Function to send user's location to the backend
         function sendLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
@@ -52,7 +77,10 @@
                 alert("Geolocation is not supported by this browser.");
             }
         }
+
+        // Function to update the map with locations from the backend
         var markers = [];
+
         function updateMap() {
             fetch(`https://location-share-backend-46pnnp8dn-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
                 method: 'GET'
@@ -71,8 +99,15 @@
             })
             .catch(error => console.error("Error fetching locations:", error));
         }
+
+        // Zoom to user location on load
+        setMapToUserLocation();
+
+        // Send location and update map immediately
         sendLocation();
         updateMap();
+
+        // Set intervals to send location and update map every 5 seconds
         setInterval(sendLocation, 5000);
         setInterval(updateMap, 5000);
     }
