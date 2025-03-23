@@ -73,7 +73,7 @@
                         var lat = position.coords.latitude;
                         var lng = position.coords.longitude;
                         console.log("Sending location with name: " + userName);
-                        fetch(`https://location-share-backend-46pnnp8dn-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
+                        fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -95,7 +95,7 @@
 
             // Update the map with locations from the backend
             function updateMap() {
-                fetch(`https://location-share-backend-46pnnp8dn-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
+                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
                     method: 'GET'
                 })
                 .then(response => response.json())
@@ -105,12 +105,14 @@
                     markers = [];
 
                     console.log("Fetched locations:", JSON.stringify(data.locations, null, 2));
+
+                    // Check if the location has a name
                     data.locations.forEach(loc => {
-                        console.log("Adding marker for:", JSON.stringify(loc));
+                        console.log("Location data:", loc); // Log individual location object
                         var marker = new google.maps.Marker({
                             position: { lat: loc.lat, lng: loc.lng },
                             map: map,
-                            label: loc.name || "Unnamed"
+                            label: loc.name ? loc.name : "Unnamed"  // This should correctly display the name if available
                         });
                         markers.push(marker);
                     });
