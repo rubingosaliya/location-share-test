@@ -67,30 +67,44 @@
             }
 
             // Send location data to the backend
-            function sendLocation() {
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(function(position) {
-                        var lat = position.coords.latitude;
-                        var lng = position.coords.longitude;
-                        console.log("Sending location with name: " + userName);
-                        fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ lat, lng, name: userName })
-                        })
-                        .then(response => response.text())
-                        .then(data => console.log("POST response:", data))
-                        .catch(error => console.error("POST error:", error));
-                    }, function(error) {
-                        console.error("Error getting location:", error);
-                    });
-                } else {
-                    alert("Geolocation is not supported by this browser.");
-                }
-            }
+let lastSentLat = null;
+    let lastSentLng = null;
 
+    function sendLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+
+                // Check if location has changed significantly (threshold of 0.0001 degrees)
+                if (lastSentLat !== null && lastSentLng !== null &&
+                    Math.abs(lat - lastSentLat) < 0.0001 && Math.abs(lng - lastSentLng) < 0.0001) {
+                    console.log("Location has not changed significantly, skipping POST");
+                    return; // Do not send location if it hasn't changed
+                }
+
+                // Update the last sent location
+                lastSentLat = lat;
+                lastSentLng = lng;
+
+                console.log("Sending location with name: " + userName);
+                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ lat, lng, name: userName })
+                })
+                .then(response => response.text())
+                .then(data => console.log("POST response:", data))
+                .catch(error => console.error("POST error:", error));
+            }, function(error) {
+                console.error("Error getting location:", error);
+            });
+        } else {
+            alert("Geolocation is not supported by this browser.");
+        }
+    }
             var markers = [];
 
             // Update the map with locations from the backend
