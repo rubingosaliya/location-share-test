@@ -36,6 +36,7 @@
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
 
+        // Cookie helper functions
         function setCookie(name, value, hours) {
             const expires = new Date(Date.now() + hours * 3600000).toUTCString();
             document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
@@ -47,6 +48,7 @@
             return null;
         }
 
+        // Load clientId and visibleUsers from cookies
         let clientId = getCookie('locationShareClientId');
         if (!clientId) {
             clientId = Math.random().toString(36).substr(2, 9);
@@ -60,6 +62,12 @@
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
+                // Load visibleUsers from cookie specific to this session
+                const visibleUsersCookie = getCookie(`visibleUsers_${sessionId}`);
+                if (visibleUsersCookie) {
+                    visibleUsers = new Set(JSON.parse(visibleUsersCookie));
+                    console.log("Loaded visibleUsers from cookie:", Array.from(visibleUsers));
+                }
                 document.getElementById('event-creation').style.display = 'none';
                 document.getElementById('session-info').style.display = 'block';
                 const sessionLink = `https://rubingosaliya.github.io/location-share-test/?session=${sessionId}`;
@@ -94,6 +102,7 @@
                         visibleUsers.add(userName);
                         const hoursLeft = (shareUntil - Date.now()) / 3600000;
                         setCookie('locationShareClientId', clientId, hoursLeft);
+                        setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
                         console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
                     }
                     console.log("Session creator:", creatorName);
@@ -145,9 +154,10 @@
                 shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
                 const hoursLeft = parseFloat(shareDuration);
                 setCookie('locationShareClientId', clientId, hoursLeft);
-                console.log("User:", userName, "Sharing until:", new Date(shareUntil));
                 visibleUsers.add(userName);
                 visibleUsers.add(creatorName); // Auto-check creator
+                setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
+                console.log("User:", userName, "Sharing until:", new Date(shareUntil));
             }
 
             map = new google.maps.Map(document.getElementById('map'), {
@@ -157,7 +167,6 @@
             });
             console.log("Map initialized");
 
-            // Travel mode slider
             const slider = document.getElementById('mode-slider');
             const label = document.getElementById('mode-label');
             slider.addEventListener('input', () => {
@@ -197,7 +206,7 @@
                                 lng: position.coords.longitude,
                                 userName,
                                 shareUntil,
-                                shareStart: Date.now(), // Track start time
+                                shareStart: Date.now(),
                                 clientId,
                                 accuracy: position.coords.accuracy
                             };
@@ -269,7 +278,6 @@
                             }
                         });
 
-                        // Auto-zoom only if creator is checked, include all visible users
                         if (visibleUsers.has(creatorName)) {
                             const visibleLocations = data.locations.filter(loc => loc.active && visibleUsers.has(loc.name));
                             if (visibleLocations.length > 1) {
@@ -303,6 +311,11 @@
                         } else {
                             visibleUsers.delete(loc.name);
                         }
+                        const hoursLeft = (shareUntil - Date.now()) / 3600000;
+                        if (hoursLeft > 0) {
+                            setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
+                            console.log("Updated visibleUsers cookie:", Array.from(visibleUsers));
+                        }
                         updateMap();
                     });
 
@@ -313,7 +326,7 @@
                         const endTime = new Date(loc.shareUntil).toLocaleTimeString();
                         label.textContent = `${loc.name} (Shared: ${startTime} - ${endTime})`;
                         label.className = 'expired-user';
-                        checkbox.disabled = true; // Disable checkbox for expired users
+                        checkbox.disabled = true;
                     } else {
                         label.textContent = loc.name;
                     }
