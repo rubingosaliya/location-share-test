@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Location Share</title>
-    <script async src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&libraries=maps,marker&callback=checkSession"></script>
+    <script>
+        window.initMap = checkSession; // Define callback globally for async loading
+    </script>
+    <script async defer src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&libraries=maps,marker"></script>
     <link rel="icon" type="image/x-icon" href="/location-share-test/favicon.ico">
     <style>
         #map { height: 400px; width: 100%; }
@@ -26,7 +29,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
-                fetchSessionCreator(); // Get creatorName for joining users
+                fetchSessionCreator();
             } else {
                 console.log("No session ID, waiting for event creation");
             }
@@ -43,7 +46,10 @@
                     console.log("Session creator:", creatorName);
                     initMap();
                 })
-                .catch(error => console.error("Error fetching session:", error.message));
+                .catch(error => {
+                    console.error("Error fetching session:", error.message);
+                    initMap(); // Proceed anyway if fetch fails
+                });
         }
 
         function createEvent() {
@@ -84,7 +90,7 @@
         function initMap() {
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
 
-            if (!creatorName || userName !== creatorName) { // Prompt only for non-creators
+            if (!creatorName || userName !== creatorName) {
                 userName = prompt("Please enter your name:") || "Anonymous";
                 const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
@@ -164,7 +170,6 @@
                         data.locations.forEach(loc => {
                             if (loc.active) {
                                 if (loc.name === creatorName) {
-                                    // Creator gets standard pin with label
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
                                         position: { lat: loc.lat, lng: loc.lng },
                                         map: map,
@@ -173,7 +178,6 @@
                                     });
                                     markers.push(marker);
                                 } else {
-                                    // Non-creators get favicon.ico
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
                                         position: { lat: loc.lat, lng: loc.lng },
                                         map: map,
@@ -194,8 +198,14 @@
             }
 
             function buildStandardPinContent(name) {
+                const pin = new google.maps.marker.PinElement({
+                    background: '#FF0000', // Red pin
+                    borderColor: '#000000',
+                    glyphColor: '#FFFFFF'
+                });
                 const div = document.createElement('div');
                 div.style.textAlign = 'center';
+                div.appendChild(pin.element); // Add the pin
                 const label = document.createElement('div');
                 label.textContent = name;
                 label.style.color = '#000';
