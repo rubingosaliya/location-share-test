@@ -72,7 +72,8 @@
 
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 0, lng: 0 },
-                zoom: 2
+                zoom: 2,
+                mapId: 'aa476a0fd363ab03' // Replace with your Map ID (e.g., 'map-123456789')
             });
 
             function setMapToUserLocation() {
@@ -133,7 +134,7 @@
                     })
                     .then(data => {
                         console.log("updateMap: Locations:", data.locations);
-                        markers.forEach(marker => marker.setMap(null));
+                        markers.forEach(marker => marker.map = null); // Clear markers
                         markers = [];
                         data.locations.forEach((loc, index) => {
                             if (loc.active) {
@@ -141,7 +142,7 @@
                                 const marker = new google.maps.marker.AdvancedMarkerElement({
                                     position: { lat: loc.lat, lng: loc.lng },
                                     map: map,
-                                    title: loc.name, // Hover text
+                                    title: loc.name,
                                     content: buildMarkerContent(loc.name, rotation)
                                 });
                                 markers.push(marker);
@@ -161,7 +162,7 @@
                 img.src = 'https://rubingosaliya.github.io/location-share-test/favicon.ico';
                 img.style.width = '32px';
                 img.style.height = '32px';
-                img.style.transform = `rotate(${rotation}deg)`; // CSS rotation
+                img.style.transform = `rotate(${rotation}deg)`;
                 const div = document.createElement('div');
                 div.style.textAlign = 'center';
                 div.appendChild(img);
