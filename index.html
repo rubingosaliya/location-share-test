@@ -47,19 +47,31 @@
             });
             console.log("Map initialized successfully");
 
-            // Set the map to the user's current location if available
+            // Set the map to the user's current location with improved accuracy
             function setMapToUserLocation() {
                 if (navigator.geolocation) {
                     console.log("Requesting user location...");
                     navigator.geolocation.getCurrentPosition(function(position) {
                         var userLat = position.coords.latitude;
                         var userLng = position.coords.longitude;
-                        console.log("User location: lat=" + userLat + ", lng=" + userLng);
-                        map.setCenter({ lat: userLat, lng: userLng });
-                        map.setZoom(15);
-                        console.log("Map zoomed to user location");
+                        var accuracy = position.coords.accuracy; // Get accuracy
+
+                        console.log("User location: lat=" + userLat + ", lng=" + userLng + ", accuracy=" + accuracy + " meters");
+
+                        // Only center the map if the accuracy is within an acceptable range
+                        if (accuracy <= 30) {  // Accuracy threshold of 30 meters
+                            map.setCenter({ lat: userLat, lng: userLng });
+                            map.setZoom(15);
+                            console.log("Map zoomed to user location with high accuracy");
+                        } else {
+                            console.log("Location accuracy is too low, not updating map.");
+                        }
                     }, function(error) {
                         console.error("Error getting user location:", error);
+                    }, {
+                        enableHighAccuracy: true, // High accuracy setting
+                        timeout: 5000,             // Timeout after 5 seconds
+                        maximumAge: 0              // Don't use cached location
                     });
                 } else {
                     console.log("Geolocation not supported by this browser");
@@ -67,44 +79,57 @@
             }
 
             // Send location data to the backend
-let lastSentLat = null;
-    let lastSentLng = null;
+            let lastSentLat = null;
+            let lastSentLng = null;
 
-    function sendLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(function(position) {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
+            function sendLocation() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
 
-                // Check if location has changed significantly (threshold of 0.0001 degrees)
-                if (lastSentLat !== null && lastSentLng !== null &&
-                    Math.abs(lat - lastSentLat) < 0.0001 && Math.abs(lng - lastSentLng) < 0.0001) {
-                    console.log("Location has not changed significantly, skipping POST");
-                    return; // Do not send location if it hasn't changed
+                        // Get the accuracy of the current location
+                        const accuracy = position.coords.accuracy;
+
+                        // Check if location has changed significantly and accuracy is acceptable
+                        if (lastSentLat !== null && lastSentLng !== null &&
+                            Math.abs(lat - lastSentLat) < 0.0001 && Math.abs(lng - lastSentLng) < 0.0001) {
+                            console.log("Location has not changed significantly, skipping POST");
+                            return; // Do not send location if it hasn't changed significantly
+                        }
+
+                        // Only send location if accuracy is within acceptable range (30 meters)
+                        if (accuracy <= 30) {
+                            // Update the last sent location
+                            lastSentLat = lat;
+                            lastSentLng = lng;
+
+                            console.log("Sending location with name: " + userName);
+                            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ lat, lng, name: userName })
+                            })
+                            .then(response => response.text())
+                            .then(data => console.log("POST response:", data))
+                            .catch(error => console.error("POST error:", error));
+                        } else {
+                            console.log("Location accuracy is too low, skipping POST.");
+                        }
+                    }, function(error) {
+                        console.error("Error getting location:", error);
+                    }, {
+                        enableHighAccuracy: true, // High accuracy setting
+                        timeout: 5000,             // Timeout after 5 seconds
+                        maximumAge: 0              // Don't use cached location
+                    });
+                } else {
+                    alert("Geolocation is not supported by this browser.");
                 }
+            }
 
-                // Update the last sent location
-                lastSentLat = lat;
-                lastSentLng = lng;
-
-                console.log("Sending location with name: " + userName);
-                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ lat, lng, name: userName })
-                })
-                .then(response => response.text())
-                .then(data => console.log("POST response:", data))
-                .catch(error => console.error("POST error:", error));
-            }, function(error) {
-                console.error("Error getting location:", error);
-            });
-        } else {
-            alert("Geolocation is not supported by this browser.");
-        }
-    }
             var markers = [];
 
             // Update the map with locations from the backend
