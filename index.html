@@ -11,7 +11,7 @@
         #event-creation { margin: 10px 0; }
         #user-controls { margin: 10px 0; }
         .user-checkbox { margin-right: 15px; }
-        #session-info { margin: 10px 0; font-weight: bold; }
+        #session-info { margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -28,19 +28,25 @@
         let map, markers = [], sessionId, userName, shareUntil, creatorName;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF']; // Blue, Green, Purple, Orange, Cyan
         let visibleUsers = new Set();
+        let isFirstVisit = !localStorage.getItem('hasVisited'); // Track first visit
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
-                fetchSessionCreator();
-                document.getElementById('event-creation').style.display = 'none'; // Hide creation UI in session
+                document.getElementById('event-creation').style.display = 'none';
                 document.getElementById('session-info').style.display = 'block';
-                document.getElementById('session-info').textContent = `Session: ${sessionId}`;
+                const sessionLink = `https://rubingosaliya.github.io/location-share-test/?session=${sessionId}`;
+                document.getElementById('session-info').innerHTML = `Session Link: <a href="${sessionLink}" target="_blank">${sessionLink}</a>`;
+                fetchSessionCreator();
             } else {
                 console.log("No session ID, waiting for event creation");
-                document.getElementById('event-creation').style.display = 'block'; // Show creation UI on base page
+                document.getElementById('event-creation').style.display = 'block';
                 document.getElementById('session-info').style.display = 'none';
+                if (isFirstVisit) {
+                    localStorage.setItem('hasVisited', 'true');
+                    createEvent(); // Auto-trigger for first visit
+                }
             }
         }
 
@@ -80,7 +86,6 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
-                    // Redirect to session URL without setting userName/creatorName yet
                     window.location.href = data.shareLink;
                 })
                 .catch(error => console.error('Error creating event:', error.message));
@@ -93,7 +98,7 @@
 
             if (!userName) {
                 userName = prompt("Please enter your name:") || "Anonymous";
-                if (!creatorName) creatorName = userName; // First user in session is creator
+                if (!creatorName) creatorName = userName; // First user is creator
                 const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
                     alert("Please enter a valid sharing duration");
@@ -101,6 +106,7 @@
                 }
                 shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
                 console.log("User:", userName, "Sharing until:", new Date(shareUntil));
+                visibleUsers.add(userName); // Auto-check new user's checkbox
             }
 
             map = new google.maps.Map(document.getElementById('map'), {
@@ -210,7 +216,7 @@
                         checkbox.type = 'checkbox';
                         checkbox.id = `user-${loc.name}`;
                         checkbox.className = 'user-checkbox';
-                        checkbox.checked = visibleUsers.has(loc.name) || visibleUsers.size === 0;
+                        checkbox.checked = visibleUsers.has(loc.name);
                         checkbox.addEventListener('change', () => {
                             if (checkbox.checked) {
                                 visibleUsers.add(loc.name);
@@ -224,7 +230,6 @@
                         label.textContent = loc.name;
                         controlsDiv.appendChild(checkbox);
                         controlsDiv.appendChild(label);
-                        if (visibleUsers.size === 0) visibleUsers.add(loc.name);
                     }
                 });
             }
