@@ -7,167 +7,124 @@
     <script async src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&callback=initMap"></script>
     <link rel="icon" type="image/x-icon" href="/location-share-test/favicon.ico">
     <style>
-        #map {
-            height: 400px;
-            width: 100%;
-        }
+        #map { height: 400px; width: 100%; }
+        #event-creation { margin: 10px 0; }
     </style>
 </head>
 <body>
     <h1>Location Share</h1>
+    <div id="event-creation">
+        <button onclick="createEvent()">Create New Event</button>
+        <p id="share-link" style="display: none;">Share this link: <a href="#" id="link"></a></p>
+    </div>
     <div id="map"></div>
 
     <script>
-        function initMap() {
-            console.log("initMap: Function started");
+        let map, markers = [], sessionId, userName, shareUntil;
 
-            // Get session ID from URL params
-            console.log("initMap: Parsing URL parameters");
-            const urlParams = new URLSearchParams(window.location.search);
-            const sessionId = urlParams.get('session');
-            if (!sessionId) {
-                console.error("initMap: No session ID found in URL");
-                alert("Please provide a session ID in the URL, e.g., ?session=abc123");
+        function createEvent() {
+            const duration = prompt("How long should this event last (hours, e.g., 2.5)?");
+            if (!duration || isNaN(duration) || duration <= 0 || duration > 24) {
+                alert("Please enter a valid duration between 0 and 24 hours");
                 return;
             }
-            console.log("initMap: Session ID found:", sessionId);
+            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}`)
+                .then(response => response.ok ? response.json() : Promise.reject('Failed to create event'))
+                .then(data => {
+                    sessionId = data.sessionId;
+                    document.getElementById('share-link').style.display = 'block';
+                    const linkElement = document.getElementById('link');
+                    linkElement.href = data.shareLink;
+                    linkElement.textContent = data.shareLink;
+                    initMap();
+                })
+                .catch(error => console.error('Error creating event:', error));
+        }
 
-            // Prompt for user name
-            console.log("initMap: Prompting for user name");
-            let userName = prompt("Please enter your name:");
-            if (!userName) {
-                userName = "Anonymous";
-                console.log("initMap: No name entered, defaulting to:", userName);
-            } else {
-                console.log("initMap: User entered name:", userName);
+        function initMap() {
+            const urlParams = new URLSearchParams(window.location.search);
+            sessionId = urlParams.get('session');
+
+            userName = prompt("Please enter your name:") || "Anonymous";
+            const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
+            if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
+                alert("Please enter a valid sharing duration");
+                return;
             }
+            shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
 
-            // Initialize map
-            console.log("initMap: Initializing Google Map");
-            const map = new google.maps.Map(document.getElementById('map'), {
+            map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 0, lng: 0 },
                 zoom: 2
             });
-            console.log("initMap: Map initialized successfully");
 
-            // Set map to user's current location
             function setMapToUserLocation() {
                 if (navigator.geolocation) {
-                    console.log("setMapToUserLocation: Requesting user location");
                     navigator.geolocation.getCurrentPosition(
-                        (position) => {
-                            const userLat = position.coords.latitude;
-                            const userLng = position.coords.longitude;
-                            console.log("setMapToUserLocation: User location received - lat:", userLat, "lng:", userLng);
-                            map.setCenter({ lat: userLat, lng: userLng });
+                        position => {
+                            map.setCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
                             map.setZoom(15);
-                            console.log("setMapToUserLocation: Map centered and zoomed to user location");
                         },
-                        (error) => {
-                            console.error("setMapToUserLocation: Error getting user location:", error.message, "Code:", error.code);
-                        }
+                        error => console.error("Geolocation error:", error.message)
                     );
-                } else {
-                    console.warn("setMapToUserLocation: Geolocation not supported by browser");
                 }
             }
 
-            // Send location to backend
             function sendLocation() {
+                if (Date.now() > shareUntil) return; // Stop if user’s time is up
                 if (navigator.geolocation) {
-                    console.log("sendLocation: Getting current position");
                     navigator.geolocation.getCurrentPosition(
-                        (position) => {
-                            const lat = position.coords.latitude;
-                            const lng = position.coords.longitude;
-                            const shareUntil = Date.now() + 3600000; // 1 hour from now
-                            console.log("sendLocation: Preparing to send - lat:", lat, "lng:", lng, "name:", userName, "shareUntil:", shareUntil);
-                            
+                        position => {
+                            const payload = {
+                                sessionId: sessionId || null,
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude,
+                                userName,
+                                shareUntil,
+                                accuracy: position.coords.accuracy
+                            };
                             fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ sessionId, lat, lng, userName, shareUntil })
+                                body: JSON.stringify(payload)
                             })
-                            .then(response => {
-                                console.log("sendLocation: POST response status:", response.status);
-                                if (!response.ok) {
-                                    throw new Error(`HTTP error! Status: ${response.status}`);
-                                }
-                                return response.text();
-                            })
-                            .then(data => console.log("sendLocation: POST response data:", data))
-                            .catch(error => console.error("sendLocation: POST error:", error.message));
-                        },
-                        (error) => {
-                            console.error("sendLocation: Error getting location:", error.message, "Code:", error.code);
+                            .then(response => response.ok ? response.text() : Promise.reject('Update failed'))
+                            .then(data => console.log("Location sent:", data))
+                            .catch(error => console.error("Send location error:", error));
                         }
                     );
-                } else {
-                    console.warn("sendLocation: Geolocation not supported");
-                    alert("Geolocation is not supported by this browser.");
                 }
             }
 
-            let markers = [];
-
-            // Update map with locations from backend
             function updateMap() {
-                console.log("updateMap: Fetching locations for session:", sessionId);
-                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?sessionId=${sessionId}`, {
-                    method: 'GET'
-                })
-                .then(response => {
-                    console.log("updateMap: GET response status:", response.status);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! Status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log("updateMap: Raw response data:", JSON.stringify(data, null, 2));
-                    if (!data.locations) {
-                        console.warn("updateMap: No 'locations' field in response");
-                        return;
-                    }
-                    console.log("updateMap: Processing locations:", data.locations.length, "found");
-
-                    // Clear existing markers
-                    console.log("updateMap: Clearing", markers.length, "existing markers");
-                    markers.forEach(marker => marker.setMap(null));
-                    markers = [];
-
-                    // Add new markers
-                    data.locations.forEach((loc, index) => {
-                        console.log(`updateMap: Location ${index} - lat: ${loc.lat}, lng: ${loc.lng}, name: ${loc.name || 'Unnamed'}, active: ${loc.active}`);
-                        const marker = new google.maps.Marker({
-                            position: { lat: loc.lat, lng: loc.lng },
-                            map: map,
-                            label: loc.name || "Unnamed",
-                            opacity: loc.active ? 1 : 0.5
+                const url = sessionId
+                    ? `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?sessionId=${sessionId}`
+                    : `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?userName=${encodeURIComponent(userName)}`;
+                fetch(url)
+                    .then(response => response.ok ? response.json() : Promise.reject('Fetch failed'))
+                    .then(data => {
+                        markers.forEach(marker => marker.setMap(null));
+                        markers = [];
+                        data.locations.forEach(loc => {
+                            if (loc.active) {
+                                const marker = new google.maps.Marker({
+                                    position: { lat: loc.lat, lng: loc.lng },
+                                    map: map,
+                                    label: loc.name,
+                                    icon: 'https://rubingosaliya.github.io/location-share-test/favicon.ico'
+                                });
+                                markers.push(marker);
+                            }
                         });
-                        markers.push(marker);
-                    });
-                    console.log("updateMap: Added", markers.length, "new markers");
-                })
-                .catch(error => console.error("updateMap: Error fetching locations:", error.message));
+                    })
+                    .catch(error => console.error("Update map error:", error));
             }
 
-            // Initial calls
-            console.log("initMap: Starting initial calls");
             setMapToUserLocation();
             sendLocation();
             updateMap();
-
-            // Set intervals
-            console.log("initMap: Setting update intervals");
-            setInterval(() => {
-                console.log("Interval: Triggering sendLocation");
-                sendLocation();
-            }, 5000);
-            setInterval(() => {
-                console.log("Interval: Triggering updateMap");
-                updateMap();
-            }, 5000);
+            setInterval(sendLocation, 10000);
+            setInterval(updateMap, 10000);
         }
     </script>
 </body>
