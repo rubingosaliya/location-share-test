@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Location Share</title>
-    <script async src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&callback=initMap"></script>
+    <script async src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&callback=checkSession"></script>
     <link rel="icon" type="image/x-icon" href="/location-share-test/favicon.ico">
     <style>
         #map { height: 400px; width: 100%; }
@@ -21,6 +21,18 @@
 
     <script>
         let map, markers = [], sessionId, userName, shareUntil;
+
+        // Check if joining a session or starting fresh
+        function checkSession() {
+            const urlParams = new URLSearchParams(window.location.search);
+            sessionId = urlParams.get('session');
+            if (sessionId) {
+                initMap(); // Join session directly
+            } else {
+                console.log("No session ID, waiting for event creation");
+                // Map initializes only after event creation
+            }
+        }
 
         function createEvent() {
             const duration = prompt("How long should this event last (hours, e.g., 2.5)?");
@@ -41,21 +53,7 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
-                    if (!map) {
-                        initMap(); // First load
-                    } else {
-                        // Switch to session mode and prompt user
-                        userName = prompt("Please enter your name:") || "Anonymous";
-                        const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
-                        if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
-                            alert("Please enter a valid sharing duration");
-                            return;
-                        }
-                        shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
-                        console.log("User:", userName, "Sharing until:", new Date(shareUntil));
-                        sendLocation();
-                        updateMap();
-                    }
+                    initMap(); // Init map after event creation
                 })
                 .catch(error => console.error('Error creating event:', error.message));
         }
@@ -63,8 +61,6 @@
         document.getElementById('createEventBtn').addEventListener('click', createEvent);
 
         function initMap() {
-            const urlParams = new URLSearchParams(window.location.search);
-            sessionId = urlParams.get('session');
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
 
             userName = prompt("Please enter your name:") || "Anonymous";
@@ -151,10 +147,10 @@
                                     icon: {
                                         url: 'https://rubingosaliya.github.io/location-share-test/favicon.ico',
                                         scaledSize: new google.maps.Size(32, 32),
-                                        rotation: rotation
+                                        anchor: new google.maps.Point(16, 16), // Center of 32x32 icon
+                                        rotation: rotation // Rotation in degrees
                                     }
                                 });
-                                marker.setRotation(rotation); // Apply rotation
                                 markers.push(marker);
                             }
                         });
