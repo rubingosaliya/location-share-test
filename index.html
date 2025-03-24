@@ -20,7 +20,7 @@
     <div id="map"></div>
 
     <script>
-        let map, markers = [], sessionId, userName, shareUntil;
+        let map, markers = [], sessionId, userName, shareUntil, creatorName;
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -51,6 +51,15 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
+                    creatorName = prompt("Please enter your name:") || "Anonymous"; // Set creatorName here
+                    userName = creatorName; // Align userName with creatorName
+                    const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
+                    if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
+                        alert("Please enter a valid sharing duration");
+                        return;
+                    }
+                    shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
+                    console.log("Creator:", creatorName, "Sharing until:", new Date(shareUntil));
                     initMap();
                 })
                 .catch(error => console.error('Error creating event:', error.message));
@@ -61,19 +70,21 @@
         function initMap() {
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
 
-            userName = prompt("Please enter your name:") || "Anonymous";
-            const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
-            if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
-                alert("Please enter a valid sharing duration");
-                return;
+            if (!creatorName) { // Only prompt if not already set (i.e., not the creator)
+                userName = prompt("Please enter your name:") || "Anonymous";
+                const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
+                if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
+                    alert("Please enter a valid sharing duration");
+                    return;
+                }
+                shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
+                console.log("User:", userName, "Sharing until:", new Date(shareUntil));
             }
-            shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
-            console.log("User:", userName, "Sharing until:", new Date(shareUntil));
 
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 0, lng: 0 },
                 zoom: 2,
-                mapId: 'aa476a0fd363ab03' // Replace with your Map ID (e.g., 'map-123456789')
+                mapId: 'aa476a0fd363ab03' // Your working Map ID
             });
 
             function setMapToUserLocation() {
@@ -134,18 +145,28 @@
                     })
                     .then(data => {
                         console.log("updateMap: Locations:", data.locations);
-                        markers.forEach(marker => marker.map = null); // Clear markers
+                        markers.forEach(marker => marker.map = null);
                         markers = [];
-                        data.locations.forEach((loc, index) => {
+                        data.locations.forEach(loc => {
                             if (loc.active) {
-                                const rotation = index === 0 ? -45 : 45; // First pin -45°, others +45°
-                                const marker = new google.maps.marker.AdvancedMarkerElement({
-                                    position: { lat: loc.lat, lng: loc.lng },
-                                    map: map,
-                                    title: loc.name,
-                                    content: buildMarkerContent(loc.name, rotation)
-                                });
-                                markers.push(marker);
+                                if (loc.name === creatorName) {
+                                    // Creator gets standard pin
+                                    const marker = new google.maps.marker.AdvancedMarkerElement({
+                                        position: { lat: loc.lat, lng: loc.lng },
+                                        map: map,
+                                        title: loc.name
+                                    });
+                                    markers.push(marker);
+                                } else {
+                                    // Non-creators get favicon.ico
+                                    const marker = new google.maps.marker.AdvancedMarkerElement({
+                                        position: { lat: loc.lat, lng: loc.lng },
+                                        map: map,
+                                        title: loc.name,
+                                        content: buildMarkerContent(loc.name)
+                                    });
+                                    markers.push(marker);
+                                }
                             }
                         });
                         if (markers.length > 1) {
@@ -157,12 +178,11 @@
                     .catch(error => console.error("updateMap: Error:", error.message));
             }
 
-            function buildMarkerContent(name, rotation) {
+            function buildMarkerContent(name) {
                 const img = document.createElement('img');
                 img.src = 'https://rubingosaliya.github.io/location-share-test/favicon.ico';
                 img.style.width = '32px';
                 img.style.height = '32px';
-                img.style.transform = `rotate(${rotation}deg)`;
                 const div = document.createElement('div');
                 div.style.textAlign = 'center';
                 div.appendChild(img);
