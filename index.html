@@ -41,7 +41,8 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
-                    initMap(); // Re-init map for session mode
+                    if (!map) initMap(); // Only init if not already loaded
+                    else updateMap(); // Refresh map with new session data
                 })
                 .catch(error => console.error('Error creating event:', error.message));
         }
@@ -138,6 +139,12 @@
                                 markers.push(marker);
                             }
                         });
+                        // Auto-adjust map bounds if multiple locations
+                        if (markers.length > 1) {
+                            const bounds = new google.maps.LatLngBounds();
+                            markers.forEach(marker => bounds.extend(marker.getPosition()));
+                            map.fitBounds(bounds);
+                        }
                     })
                     .catch(error => console.error("updateMap: Error:", error.message));
             }
