@@ -9,6 +9,8 @@
     <style>
         #map { height: 400px; width: 100%; }
         #event-creation { margin: 10px 0; }
+        #user-controls { margin: 10px 0; }
+        .user-checkbox { margin-right: 15px; }
     </style>
 </head>
 <body>
@@ -18,10 +20,12 @@
         <p id="share-link" style="display: none;">Share this link: <a href="#" id="link"></a></p>
     </div>
     <div id="map"></div>
+    <div id="user-controls"></div>
 
     <script>
         let map, markers = [], sessionId, userName, shareUntil, creatorName;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF']; // Blue, Green, Purple, Orange, Cyan
+        let visibleUsers = new Set(); // Track which users' markers are visible
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -78,7 +82,8 @@
                     }
                     shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
                     console.log("Creator:", creatorName, "Sharing until:", new Date(shareUntil));
-                    initMap();
+                    // Redirect to session URL
+                    window.location.href = data.shareLink;
                 })
                 .catch(error => console.error('Error creating event:', error.message));
         }
@@ -165,8 +170,9 @@
                         console.log("updateMap: Locations:", data.locations);
                         markers.forEach(marker => marker.map = null);
                         markers = [];
+                        updateUserControls(data.locations); // Update checkboxes
                         data.locations.forEach((loc, index) => {
-                            if (loc.active) {
+                            if (loc.active && visibleUsers.has(loc.name)) {
                                 if (loc.name === creatorName) {
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
                                         position: { lat: loc.lat, lng: loc.lng },
@@ -176,7 +182,7 @@
                                     });
                                     markers.push(marker);
                                 } else {
-                                    const color = userColors[index % userColors.length]; // Cycle through colors
+                                    const color = userColors[index % userColors.length];
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
                                         position: { lat: loc.lat, lng: loc.lng },
                                         map: map,
@@ -196,9 +202,37 @@
                     .catch(error => console.error("updateMap: Error:", error.message));
             }
 
+            function updateUserControls(locations) {
+                const controlsDiv = document.getElementById('user-controls');
+                controlsDiv.innerHTML = ''; // Clear existing controls
+                locations.forEach(loc => {
+                    if (loc.active) {
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.id = `user-${loc.name}`;
+                        checkbox.className = 'user-checkbox';
+                        checkbox.checked = visibleUsers.has(loc.name) || visibleUsers.size === 0; // Default to checked if first load
+                        checkbox.addEventListener('change', () => {
+                            if (checkbox.checked) {
+                                visibleUsers.add(loc.name);
+                            } else {
+                                visibleUsers.delete(loc.name);
+                            }
+                            updateMap(); // Refresh map with visibility changes
+                        });
+                        const label = document.createElement('label');
+                        label.htmlFor = `user-${loc.name}`;
+                        label.textContent = loc.name;
+                        controlsDiv.appendChild(checkbox);
+                        controlsDiv.appendChild(label);
+                        if (visibleUsers.size === 0) visibleUsers.add(loc.name); // Initial load
+                    }
+                });
+            }
+
             function buildStandardPinContent(name) {
                 const pin = new google.maps.marker.PinElement({
-                    background: '#FF0000', // Red for creator
+                    background: '#FF0000',
                     borderColor: '#000000',
                     glyphColor: '#FFFFFF'
                 });
@@ -218,7 +252,7 @@
 
             function buildUserPinContent(name, color) {
                 const pin = new google.maps.marker.PinElement({
-                    background: color, // Unique color for each user
+                    background: color,
                     borderColor: '#000000',
                     glyphColor: '#FFFFFF'
                 });
