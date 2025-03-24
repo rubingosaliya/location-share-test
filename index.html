@@ -41,8 +41,21 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
-                    if (!map) initMap(); // Only init if not already loaded
-                    else updateMap(); // Refresh map with new session data
+                    if (!map) {
+                        initMap(); // First load
+                    } else {
+                        // Switch to session mode and prompt user
+                        userName = prompt("Please enter your name:") || "Anonymous";
+                        const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
+                        if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
+                            alert("Please enter a valid sharing duration");
+                            return;
+                        }
+                        shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
+                        console.log("User:", userName, "Sharing until:", new Date(shareUntil));
+                        sendLocation();
+                        updateMap();
+                    }
                 })
                 .catch(error => console.error('Error creating event:', error.message));
         }
@@ -128,18 +141,23 @@
                         console.log("updateMap: Locations:", data.locations);
                         markers.forEach(marker => marker.setMap(null));
                         markers = [];
-                        data.locations.forEach(loc => {
+                        data.locations.forEach((loc, index) => {
                             if (loc.active) {
+                                const rotation = index === 0 ? -45 : 45; // First pin -45°, others +45°
                                 const marker = new google.maps.Marker({
                                     position: { lat: loc.lat, lng: loc.lng },
                                     map: map,
                                     label: loc.name,
-                                    icon: 'https://rubingosaliya.github.io/location-share-test/favicon.ico'
+                                    icon: {
+                                        url: 'https://rubingosaliya.github.io/location-share-test/favicon.ico',
+                                        scaledSize: new google.maps.Size(32, 32),
+                                        rotation: rotation
+                                    }
                                 });
+                                marker.setRotation(rotation); // Apply rotation
                                 markers.push(marker);
                             }
                         });
-                        // Auto-adjust map bounds if multiple locations
                         if (markers.length > 1) {
                             const bounds = new google.maps.LatLngBounds();
                             markers.forEach(marker => bounds.extend(marker.getPosition()));
