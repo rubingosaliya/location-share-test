@@ -11,6 +11,7 @@
         #event-creation { margin: 10px 0; }
         #user-controls { margin: 10px 0; }
         .user-checkbox { margin-right: 15px; }
+        #session-info { margin: 10px 0; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -19,21 +20,27 @@
         <button id="createEventBtn">Create New Event</button>
         <p id="share-link" style="display: none;">Share this link: <a href="#" id="link"></a></p>
     </div>
+    <div id="session-info" style="display: none;"></div>
     <div id="map"></div>
     <div id="user-controls"></div>
 
     <script>
         let map, markers = [], sessionId, userName, shareUntil, creatorName;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF']; // Blue, Green, Purple, Orange, Cyan
-        let visibleUsers = new Set(); // Track which users' markers are visible
+        let visibleUsers = new Set();
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
                 fetchSessionCreator();
+                document.getElementById('event-creation').style.display = 'none'; // Hide creation UI in session
+                document.getElementById('session-info').style.display = 'block';
+                document.getElementById('session-info').textContent = `Session: ${sessionId}`;
             } else {
                 console.log("No session ID, waiting for event creation");
+                document.getElementById('event-creation').style.display = 'block'; // Show creation UI on base page
+                document.getElementById('session-info').style.display = 'none';
             }
         }
 
@@ -60,9 +67,8 @@
                 alert("Please enter a valid duration between 0 and 24 hours");
                 return;
             }
-            creatorName = prompt("Please enter your name:") || "Anonymous";
-            console.log("Creating event with duration:", duration, "Creator:", creatorName);
-            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}&creatorName=${encodeURIComponent(creatorName)}`)
+            console.log("Creating event with duration:", duration);
+            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}`)
                 .then(response => {
                     if (!response.ok) throw new Error(`Failed to create event: ${response.status}`);
                     return response.json();
@@ -74,15 +80,7 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
-                    userName = creatorName;
-                    const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
-                    if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
-                        alert("Please enter a valid sharing duration");
-                        return;
-                    }
-                    shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
-                    console.log("Creator:", creatorName, "Sharing until:", new Date(shareUntil));
-                    // Redirect to session URL
+                    // Redirect to session URL without setting userName/creatorName yet
                     window.location.href = data.shareLink;
                 })
                 .catch(error => console.error('Error creating event:', error.message));
@@ -95,6 +93,7 @@
 
             if (!userName) {
                 userName = prompt("Please enter your name:") || "Anonymous";
+                if (!creatorName) creatorName = userName; // First user in session is creator
                 const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
                     alert("Please enter a valid sharing duration");
@@ -170,7 +169,7 @@
                         console.log("updateMap: Locations:", data.locations);
                         markers.forEach(marker => marker.map = null);
                         markers = [];
-                        updateUserControls(data.locations); // Update checkboxes
+                        updateUserControls(data.locations);
                         data.locations.forEach((loc, index) => {
                             if (loc.active && visibleUsers.has(loc.name)) {
                                 if (loc.name === creatorName) {
@@ -204,28 +203,28 @@
 
             function updateUserControls(locations) {
                 const controlsDiv = document.getElementById('user-controls');
-                controlsDiv.innerHTML = ''; // Clear existing controls
+                controlsDiv.innerHTML = '';
                 locations.forEach(loc => {
                     if (loc.active) {
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.id = `user-${loc.name}`;
                         checkbox.className = 'user-checkbox';
-                        checkbox.checked = visibleUsers.has(loc.name) || visibleUsers.size === 0; // Default to checked if first load
+                        checkbox.checked = visibleUsers.has(loc.name) || visibleUsers.size === 0;
                         checkbox.addEventListener('change', () => {
                             if (checkbox.checked) {
                                 visibleUsers.add(loc.name);
                             } else {
                                 visibleUsers.delete(loc.name);
                             }
-                            updateMap(); // Refresh map with visibility changes
+                            updateMap();
                         });
                         const label = document.createElement('label');
                         label.htmlFor = `user-${loc.name}`;
                         label.textContent = loc.name;
                         controlsDiv.appendChild(checkbox);
                         controlsDiv.appendChild(label);
-                        if (visibleUsers.size === 0) visibleUsers.add(loc.name); // Initial load
+                        if (visibleUsers.size === 0) visibleUsers.add(loc.name);
                     }
                 });
             }
