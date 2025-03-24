@@ -16,7 +16,7 @@
 </head>
 <body>
     <h1>Location Share</h1>
-    <div id="event-creation">
+    <div id="event-creation" style="display: none;">
         <button id="createEventBtn">Create New Event</button>
         <p id="share-link" style="display: none;">Share this link: <a href="#" id="link"></a></p>
     </div>
@@ -28,27 +28,23 @@
         let map, markers = [], sessionId, userName, shareUntil, creatorName;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF']; // Blue, Green, Purple, Orange, Cyan
         let visibleUsers = new Set();
-        let isFirstVisit = !localStorage.getItem('hasVisited');
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
-                // User is joining an existing session
+                // Joining an existing session
                 document.getElementById('event-creation').style.display = 'none';
                 document.getElementById('session-info').style.display = 'block';
                 const sessionLink = `https://rubingosaliya.github.io/location-share-test/?session=${sessionId}`;
                 document.getElementById('session-info').innerHTML = `Session Link: <a href="${sessionLink}" target="_blank">${sessionLink}</a>`;
                 fetchSessionCreator();
             } else {
-                // Base URL, show creation UI
-                console.log("No session ID, waiting for event creation");
-                document.getElementById('event-creation').style.display = 'block';
+                // Static URL, auto-create event
+                console.log("No session ID, auto-creating event");
+                document.getElementById('event-creation').style.display = 'none';
                 document.getElementById('session-info').style.display = 'none';
-                if (isFirstVisit) {
-                    localStorage.setItem('hasVisited', 'true');
-                    createEvent();
-                }
+                createEvent();
             }
         }
 
@@ -92,8 +88,6 @@
                 })
                 .catch(error => console.error('Error creating event:', error.message));
         }
-
-        document.getElementById('createEventBtn').addEventListener('click', createEvent);
 
         function initMap() {
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
