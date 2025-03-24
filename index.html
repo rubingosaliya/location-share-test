@@ -29,6 +29,28 @@
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
 
+        // Cookie helper functions
+        function setCookie(name, value, hours) {
+            const expires = new Date(Date.now() + hours * 3600000).toUTCString();
+            document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+        }
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+            return null;
+        }
+
+        // Get or set clientId from cookie
+        let clientId = getCookie('locationShareClientId');
+        if (!clientId) {
+            clientId = Math.random().toString(36).substr(2, 9);
+            setCookie('locationShareClientId', clientId, 24); // Set for 24 hours initially
+            console.log("Generated new clientId:", clientId);
+        } else {
+            console.log("Retrieved clientId from cookie:", clientId);
+        }
+
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
@@ -46,12 +68,6 @@
             }
         }
 
-        let clientId = localStorage.getItem('locationShareClientId');
-        if (!clientId) {
-            clientId = Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('locationShareClientId', clientId);
-        }
-
         function fetchSessionCreator() {
             fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getSession?sessionId=${sessionId}&clientId=${clientId}`)
                 .then(response => {
@@ -64,6 +80,9 @@
                         userName = data.userName;
                         shareUntil = data.shareUntil;
                         visibleUsers.add(userName);
+                        // Update cookie expiration to match shareUntil
+                        const hoursLeft = (shareUntil - Date.now()) / 3600000;
+                        setCookie('locationShareClientId', clientId, hoursLeft);
                         console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
                     }
                     console.log("Session creator:", creatorName);
@@ -111,6 +130,9 @@
                     return;
                 }
                 shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
+                // Set cookie expiration to match shareUntil
+                const hoursLeft = parseFloat(shareDuration);
+                setCookie('locationShareClientId', clientId, hoursLeft);
                 console.log("User:", userName, "Sharing until:", new Date(shareUntil));
                 visibleUsers.add(userName);
             }
@@ -200,7 +222,6 @@
                         markers.forEach(marker => marker.map = null);
                         markers = [];
 
-                        // Update markers for all visible users
                         updateUserControls(data.locations);
                         data.locations.forEach((loc, index) => {
                             if (loc.active && visibleUsers.has(loc.name)) {
@@ -227,7 +248,6 @@
                             }
                         });
 
-                        // Auto-zoom to keep creator and current user in view
                         const creatorLoc = data.locations.find(loc => loc.name === creatorName && loc.active);
                         const userLoc = data.locations.find(loc => loc.name === userName && loc.active);
                         if (creatorLoc && userLoc) {
