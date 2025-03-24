@@ -72,13 +72,20 @@
                     navigator.geolocation.getCurrentPosition(function(position) {
                         var lat = position.coords.latitude;
                         var lng = position.coords.longitude;
+                        var shareUntil = Date.now() + 3600000; // Share location for 1 hour by default
                         console.log("Sending location with name: " + userName);
-                        fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
+                        fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify({ lat, lng, name: userName })
+                            body: JSON.stringify({ 
+                                sessionId: sessionId, 
+                                lat, 
+                                lng, 
+                                userName, 
+                                shareUntil 
+                            })
                         })
                         .then(response => response.text())
                         .then(data => console.log("POST response:", data))
@@ -95,7 +102,7 @@
 
             // Update the map with locations from the backend
             function updateMap() {
-                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
+                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?sessionId=${sessionId}`, {
                     method: 'GET'
                 })
                 .then(response => response.json())
@@ -112,7 +119,8 @@
                         var marker = new google.maps.Marker({
                             position: { lat: loc.lat, lng: loc.lng },
                             map: map,
-                            label: loc.name ? loc.name : "Unnamed"  // This should correctly display the name if available
+                            label: loc.name ? loc.name : "Unnamed",  // This should correctly display the name if available
+                            opacity: loc.active ? 1 : 0.5 // Fade out if the location is inactive
                         });
                         markers.push(marker);
                     });
@@ -132,3 +140,4 @@
     </script>
 </body>
 </html>
+
