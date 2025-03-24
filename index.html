@@ -26,10 +26,24 @@
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
-                initMap(); // Join session directly
+                fetchSessionCreator(); // Get creatorName for joining users
             } else {
                 console.log("No session ID, waiting for event creation");
             }
+        }
+
+        function fetchSessionCreator() {
+            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getSession?sessionId=${sessionId}`)
+                .then(response => {
+                    if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    creatorName = data.creatorName;
+                    console.log("Session creator:", creatorName);
+                    initMap();
+                })
+                .catch(error => console.error("Error fetching session:", error.message));
         }
 
         function createEvent() {
@@ -38,8 +52,9 @@
                 alert("Please enter a valid duration between 0 and 24 hours");
                 return;
             }
-            console.log("Creating event with duration:", duration);
-            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}`)
+            creatorName = prompt("Please enter your name:") || "Anonymous";
+            console.log("Creating event with duration:", duration, "Creator:", creatorName);
+            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}&creatorName=${encodeURIComponent(creatorName)}`)
                 .then(response => {
                     if (!response.ok) throw new Error(`Failed to create event: ${response.status}`);
                     return response.json();
@@ -51,8 +66,7 @@
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
                     linkElement.textContent = data.shareLink;
-                    creatorName = prompt("Please enter your name:") || "Anonymous"; // Set creatorName here
-                    userName = creatorName; // Align userName with creatorName
+                    userName = creatorName;
                     const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                     if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
                         alert("Please enter a valid sharing duration");
@@ -70,7 +84,7 @@
         function initMap() {
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
 
-            if (!creatorName) { // Only prompt if not already set (i.e., not the creator)
+            if (!creatorName || userName !== creatorName) { // Prompt only for non-creators
                 userName = prompt("Please enter your name:") || "Anonymous";
                 const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
@@ -84,7 +98,7 @@
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 0, lng: 0 },
                 zoom: 2,
-                mapId: 'aa476a0fd363ab03' // Your working Map ID
+                mapId: 'aa476a0fd363ab03'
             });
 
             function setMapToUserLocation() {
@@ -150,11 +164,12 @@
                         data.locations.forEach(loc => {
                             if (loc.active) {
                                 if (loc.name === creatorName) {
-                                    // Creator gets standard pin
+                                    // Creator gets standard pin with label
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
                                         position: { lat: loc.lat, lng: loc.lng },
                                         map: map,
-                                        title: loc.name
+                                        title: loc.name,
+                                        content: buildStandardPinContent(loc.name)
                                     });
                                     markers.push(marker);
                                 } else {
@@ -176,6 +191,20 @@
                         }
                     })
                     .catch(error => console.error("updateMap: Error:", error.message));
+            }
+
+            function buildStandardPinContent(name) {
+                const div = document.createElement('div');
+                div.style.textAlign = 'center';
+                const label = document.createElement('div');
+                label.textContent = name;
+                label.style.color = '#000';
+                label.style.fontSize = '12px';
+                label.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                label.style.padding = '2px 4px';
+                label.style.borderRadius = '2px';
+                div.appendChild(label);
+                return div;
             }
 
             function buildMarkerContent(name) {
