@@ -46,34 +46,34 @@
             }
         }
 
-let clientId = localStorage.getItem('locationShareClientId');
-if (!clientId) {
-    clientId = Math.random().toString(36).substr(2, 9); // Simple random ID
-    localStorage.setItem('locationShareClientId', clientId);
-}
+        let clientId = localStorage.getItem('locationShareClientId');
+        if (!clientId) {
+            clientId = Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('locationShareClientId', clientId);
+        }
 
-function fetchSessionCreator() {
-    fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getSession?sessionId=${sessionId}&clientId=${clientId}`)
-        .then(response => {
-            if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            creatorName = data.creatorName;
-            if (data.userName && data.shareUntil > Date.now()) {
-                userName = data.userName;
-                shareUntil = data.shareUntil;
-                visibleUsers.add(userName);
-                console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
-            }
-            console.log("Session creator:", creatorName);
-            initMap();
-        })
-        .catch(error => {
-            console.error("Error fetching session:", error.message);
-            initMap();
-        });
-}
+        function fetchSessionCreator() {
+            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getSession?sessionId=${sessionId}&clientId=${clientId}`)
+                .then(response => {
+                    if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    creatorName = data.creatorName;
+                    if (data.userName && data.shareUntil > Date.now()) {
+                        userName = data.userName;
+                        shareUntil = data.shareUntil;
+                        visibleUsers.add(userName);
+                        console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
+                    }
+                    console.log("Session creator:", creatorName);
+                    initMap();
+                })
+                .catch(error => {
+                    console.error("Error fetching session:", error.message);
+                    initMap();
+                });
+        }
 
         function createEvent() {
             const duration = prompt("How long should this event last (hours, e.g., 2.5)?");
@@ -142,48 +142,48 @@ function fetchSessionCreator() {
             }
 
             function sendLocation() {
-        if (Date.now() > shareUntil) {
-            console.log("sendLocation: Sharing expired for", userName);
-            return;
-        }
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                position => {
-                    const payload = {
-                        sessionId: sessionId || null,
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                        userName,
-                        shareUntil,
-                        clientId, // Include clientId
-                        accuracy: position.coords.accuracy
-                    };
-                    console.log("sendLocation: Sending:", payload);
-                    fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    })
-                    .then(response => {
-                        if (!response.ok) throw new Error(`Update failed: ${response.status}`);
-                        return response.text();
-                    })
-                    .then(data => {
-                        console.log("sendLocation: Response:", data);
-                        updateMap();
-                    })
-                    .catch(error => console.error("sendLocation: Fetch error:", error.message));
-                },
-                error => {
-                    console.error("sendLocation: Geolocation error:", error.message, "Code:", error.code);
-                    alert("Location access denied. Please enable it in settings to see your marker.");
+                if (Date.now() > shareUntil) {
+                    console.log("sendLocation: Sharing expired for", userName);
+                    return;
                 }
-            );
-        } else {
-            console.error("Geolocation not supported by browser");
-            alert("Your browser doesn’t support geolocation.");
-        }
-    }
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        position => {
+                            const payload = {
+                                sessionId: sessionId || null,
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude,
+                                userName,
+                                shareUntil,
+                                clientId,
+                                accuracy: position.coords.accuracy
+                            };
+                            console.log("sendLocation: Sending:", payload);
+                            fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            })
+                            .then(response => {
+                                if (!response.ok) throw new Error(`Update failed: ${response.status}`);
+                                return response.text();
+                            })
+                            .then(data => {
+                                console.log("sendLocation: Response:", data);
+                                updateMap();
+                            })
+                            .catch(error => console.error("sendLocation: Fetch error:", error.message));
+                        },
+                        error => {
+                            console.error("sendLocation: Geolocation error:", error.message, "Code:", error.code);
+                            alert("Location access denied. Please enable it in settings to see your marker.");
+                        }
+                    );
+                } else {
+                    console.error("Geolocation not supported by browser");
+                    alert("Your browser doesn’t support geolocation.");
+                }
+            }
 
             function updateMap() {
                 const url = sessionId
@@ -199,6 +199,8 @@ function fetchSessionCreator() {
                         console.log("updateMap: Locations:", data.locations);
                         markers.forEach(marker => marker.map = null);
                         markers = [];
+
+                        // Update markers for all visible users
                         updateUserControls(data.locations);
                         data.locations.forEach((loc, index) => {
                             if (loc.active && visibleUsers.has(loc.name)) {
@@ -224,11 +226,24 @@ function fetchSessionCreator() {
                                 }
                             }
                         });
-                        if (markers.length > 1) {
+
+                        // Auto-zoom to keep creator and current user in view
+                        const creatorLoc = data.locations.find(loc => loc.name === creatorName && loc.active);
+                        const userLoc = data.locations.find(loc => loc.name === userName && loc.active);
+                        if (creatorLoc && userLoc) {
                             const bounds = new google.maps.LatLngBounds();
-                            markers.forEach(marker => bounds.extend(marker.position));
+                            bounds.extend({ lat: creatorLoc.lat, lng: creatorLoc.lng });
+                            bounds.extend({ lat: userLoc.lat, lng: userLoc.lng });
                             map.fitBounds(bounds);
-                            console.log("Map bounds adjusted to show multiple markers");
+                            console.log("Map zoomed to bounds including creator and user:", bounds.toJSON());
+                        } else if (creatorLoc) {
+                            map.setCenter({ lat: creatorLoc.lat, lng: creatorLoc.lng });
+                            map.setZoom(15);
+                            console.log("Map centered on creator only");
+                        } else if (userLoc) {
+                            map.setCenter({ lat: userLoc.lat, lng: userLoc.lng });
+                            map.setZoom(15);
+                            console.log("Map centered on user only");
                         }
                     })
                     .catch(error => console.error("updateMap: Error:", error.message));
