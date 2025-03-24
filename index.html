@@ -26,21 +26,19 @@
 
     <script>
         let map, markers = [], sessionId, userName, shareUntil, creatorName;
-        const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF']; // Blue, Green, Purple, Orange, Cyan
+        const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
-                // Joining an existing session
                 document.getElementById('event-creation').style.display = 'none';
                 document.getElementById('session-info').style.display = 'block';
                 const sessionLink = `https://rubingosaliya.github.io/location-share-test/?session=${sessionId}`;
                 document.getElementById('session-info').innerHTML = `Session Link: <a href="${sessionLink}" target="_blank">${sessionLink}</a>`;
                 fetchSessionCreator();
             } else {
-                // Static URL, auto-create event
                 console.log("No session ID, auto-creating event");
                 document.getElementById('event-creation').style.display = 'none';
                 document.getElementById('session-info').style.display = 'none';
@@ -94,7 +92,7 @@
 
             if (!userName) {
                 userName = prompt("Please enter your name:") || "Anonymous";
-                if (!creatorName) creatorName = userName; // First user is creator
+                if (!creatorName) creatorName = userName;
                 const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
                     alert("Please enter a valid sharing duration");
@@ -102,7 +100,7 @@
                 }
                 shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
                 console.log("User:", userName, "Sharing until:", new Date(shareUntil));
-                visibleUsers.add(userName); // Auto-check new user's checkbox
+                visibleUsers.add(userName);
             }
 
             map = new google.maps.Map(document.getElementById('map'), {
@@ -110,6 +108,7 @@
                 zoom: 2,
                 mapId: 'aa476a0fd363ab03'
             });
+            console.log("Map initialized");
 
             function setMapToUserLocation() {
                 if (navigator.geolocation) {
@@ -117,9 +116,16 @@
                         position => {
                             map.setCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
                             map.setZoom(15);
+                            console.log("Map centered to:", position.coords.latitude, position.coords.longitude);
                         },
-                        error => console.error("Geolocation error:", error.message)
+                        error => {
+                            console.error("Geolocation error in setMapToUserLocation:", error.message, "Code:", error.code);
+                            alert("Location access denied. Please allow location permissions in Safari settings to share your position.");
+                        }
                     );
+                } else {
+                    console.error("Geolocation not supported by browser");
+                    alert("Your browser doesn’t support geolocation. Location sharing won’t work.");
                 }
             }
 
@@ -139,7 +145,7 @@
                                 shareUntil,
                                 accuracy: position.coords.accuracy
                             };
-                            console.log("sendLocation: Sending:", payload, "Accuracy:", position.coords.accuracy);
+                            console.log("sendLocation: Sending:", payload);
                             fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -149,11 +155,20 @@
                                 if (!response.ok) throw new Error(`Update failed: ${response.status}`);
                                 return response.text();
                             })
-                            .then(data => console.log("sendLocation: Response:", data))
-                            .catch(error => console.error("sendLocation: Error:", error.message));
+                            .then(data => {
+                                console.log("sendLocation: Response:", data);
+                                updateMap(); // Force update after success
+                            })
+                            .catch(error => console.error("sendLocation: Fetch error:", error.message));
                         },
-                        error => console.error("sendLocation: Geolocation error:", error.message)
+                        error => {
+                            console.error("sendLocation: Geolocation error:", error.message, "Code:", error.code);
+                            alert("Location access denied. Please enable it in Safari settings (Preferences > Websites > Location) to see your marker.");
+                        }
                     );
+                } else {
+                    console.error("Geolocation not supported by browser");
+                    alert("Your browser doesn’t support geolocation.");
                 }
             }
 
@@ -182,6 +197,7 @@
                                         content: buildStandardPinContent(loc.name)
                                     });
                                     markers.push(marker);
+                                    console.log("Added creator marker for:", loc.name);
                                 } else {
                                     const color = userColors[index % userColors.length];
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
@@ -191,6 +207,7 @@
                                         content: buildUserPinContent(loc.name, color)
                                     });
                                     markers.push(marker);
+                                    console.log("Added user marker for:", loc.name, "Color:", color);
                                 }
                             }
                         });
@@ -198,6 +215,7 @@
                             const bounds = new google.maps.LatLngBounds();
                             markers.forEach(marker => bounds.extend(marker.position));
                             map.fitBounds(bounds);
+                            console.log("Map bounds adjusted to show multiple markers");
                         }
                     })
                     .catch(error => console.error("updateMap: Error:", error.message));
@@ -206,6 +224,7 @@
             function updateUserControls(locations) {
                 const controlsDiv = document.getElementById('user-controls');
                 controlsDiv.innerHTML = '';
+                console.log("Updating user controls with locations:", locations);
                 locations.forEach(loc => {
                     if (loc.active) {
                         const checkbox = document.createElement('input');
@@ -226,6 +245,7 @@
                         label.textContent = loc.name;
                         controlsDiv.appendChild(checkbox);
                         controlsDiv.appendChild(label);
+                        console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked);
                     }
                 });
             }
