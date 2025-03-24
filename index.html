@@ -4,122 +4,86 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Location Share</title>
-    <script async src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&callback=initMap"></script>
-
+    <script async src="https://maps.google.com/maps/api/js?key=YOUR_API_KEY&callback=initMap"></script>
     <style>
-        #map {
-            height: 400px;
-            width: 100%;
-        }
+        #map { height: 400px; width: 100%; }
+        .faded { opacity: 0.5; }
     </style>
 </head>
 <body>
     <h1>Location Share</h1>
+    <button id="createEvent">Create Event Link</button>
+    <button id="stopSharing">Stop Sharing</button>
     <div id="map"></div>
-
+    
     <script>
-        let map;
-        let userMarker;
-        let lastSentLat = null;
-        let lastSentLng = null;
-        const ACCURACY_THRESHOLD = 100; // Increased threshold for better usability
-
+        let map, userMarker, sessionId, userName, shareUntil;
+        let markers = {};
+        
         function initMap() {
-            console.log("initMap started");
-
-            const urlParams = new URLSearchParams(window.location.search);
-            const sessionId = urlParams.get('session');
-            if (!sessionId) {
-                alert("Please provide a session ID in the URL, e.g., ?session=abc123");
-                return;
-            }
-            console.log("Session ID found: " + sessionId);
-
-            let userName = prompt("Please enter your name:") || "Anonymous";
-            console.log("User entered name:", userName);
-
-            // Initialize map with a wider view
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 0, lng: 0 },
                 zoom: 2
             });
-
-            function updateUserLocation() {
-                if (navigator.geolocation) {
-                    console.log("Requesting user location...");
-                    navigator.geolocation.watchPosition(
-                        (position) => {
-                            const { latitude: lat, longitude: lng, accuracy } = position.coords;
-                            console.log(`Location update: lat=${lat}, lng=${lng}, accuracy=${accuracy}m`);
-
-                            if (!userMarker) {
-                                userMarker = new google.maps.Marker({
-                                    position: { lat, lng },
-                                    map,
-                                    label: userName,
-                                });
-                                map.setCenter({ lat, lng });
-                                map.setZoom(15);
-                                console.log("Initial map centering and zooming.");
-                            } else {
-                                userMarker.setPosition({ lat, lng });
-                            }
-
-                            if (accuracy > ACCURACY_THRESHOLD) {
-                                console.warn("Location accuracy is too low, but updating UI.");
-                                return; // Don't send data if accuracy is too low
-                            }
-
-                            if (
-                                lastSentLat !== null &&
-                                lastSentLng !== null &&
-                                Math.abs(lat - lastSentLat) < 0.0001 &&
-                                Math.abs(lng - lastSentLng) < 0.0001
-                            ) {
-                                console.log("Location has not changed significantly, skipping POST.");
-                                return;
-                            }
-
-                            lastSentLat = lat;
-                            lastSentLng = lng;
-
-                            console.log("Sending location update...");
-                            fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ lat, lng, name: userName }),
-                            })
-                                .then((response) => response.text())
-                                .then((data) => console.log("POST response:", data))
-                                .catch((error) => console.error("POST error:", error));
-                        },
-                        (error) => console.error("Error getting location:", error),
-                        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-                    );
-                } else {
-                    alert("Geolocation is not supported by this browser.");
-                }
+            
+            document.getElementById('createEvent').addEventListener('click', createEvent);
+            document.getElementById('stopSharing').addEventListener('click', stopSharing);
+            
+            startLocationSharing();
+        }
+        
+        function createEvent() {
+            const duration = prompt("Enter event duration in hours (max 6):");
+            if (duration > 0 && duration <= 6) {
+                fetch(`/createEvent?duration=${duration}`)
+                    .then(res => res.json())
+                    .then(data => alert(`Share this link: ${window.location.origin}/?session=${data.sessionId}`));
             }
-
-            function updateMap() {
-                fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/locations/${sessionId}`)
-                    .then((response) => response.json())
-                    .then((data) => {
-                        console.log("Fetched locations:", JSON.stringify(data.locations, null, 2));
-
-                        data.locations.forEach((loc) => {
-                            new google.maps.Marker({
-                                position: { lat: loc.lat, lng: loc.lng },
-                                map,
-                                label: loc.name || "Unnamed",
-                            });
+        }
+        
+        function startLocationSharing() {
+            sessionId = new URLSearchParams(window.location.search).get('session');
+            if (!sessionId) return alert("No session found!");
+            
+            userName = prompt("Enter your name:") || "Anonymous";
+            shareUntil = Date.now() + (parseInt(prompt("How many hours to share your location? (max 6)") || 1) * 3600000);
+            
+            navigator.geolocation.watchPosition(updateLocation, console.error, { enableHighAccuracy: true });
+            setInterval(fetchLocations, 5000);
+        }
+        
+        function updateLocation(position) {
+            const { latitude: lat, longitude: lng, accuracy } = position.coords;
+            if (accuracy > 50) return;
+            
+            fetch(`/updateLocation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId, lat, lng, userName, shareUntil })
+            });
+        }
+        
+        function fetchLocations() {
+            fetch(`/getLocations?sessionId=${sessionId}`)
+                .then(res => res.json())
+                .then(data => {
+                    Object.values(markers).forEach(marker => marker.setMap(null));
+                    markers = {};
+                    
+                    data.locations.forEach(({ lat, lng, name, active, isCreator }) => {
+                        markers[name] = new google.maps.Marker({
+                            position: { lat, lng },
+                            map,
+                            label: name,
+                            icon: isCreator ? { url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png' } : (active ? null : { url: 'http://maps.google.com/mapfiles/ms/icons/grey-dot.png' })
                         });
-                    })
-                    .catch((error) => console.error("Error fetching locations:", error));
-            }
-
-            updateUserLocation();
-            setInterval(updateMap, 5000);
+                    });
+                });
+        }
+        
+        function stopSharing() {
+            fetch(`/stopSharing?sessionId=${sessionId}`);
+            alert("You have stopped sharing your location.");
         }
     </script>
 </body>
