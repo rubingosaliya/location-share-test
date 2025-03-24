@@ -62,38 +62,38 @@
             }
 
             function sendLocation() {
-                if (Date.now() > shareUntil) {
-                    console.log("sendLocation: Sharing expired for", userName);
-                    return;
-                }
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        position => {
-                            const payload = {
-                                sessionId: sessionId || null,
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude,
-                                userName,
-                                shareUntil,
-                                accuracy: position.coords.accuracy
-                            };
-                            console.log("sendLocation: Sending:", payload);
-                            fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                            })
-                            .then(response => {
-                                if (!response.ok) throw new Error(`Update failed: ${response.status}`);
-                                return response.text();
-                            })
-                            .then(data => console.log("sendLocation: Response:", data))
-                            .catch(error => console.error("sendLocation: Error:", error.message));
-                        },
-                        error => console.error("sendLocation: Geolocation error:", error.message)
-                    );
-                }
-            }
+    if (Date.now() > shareUntil) {
+        console.log("sendLocation: Sharing expired for", userName);
+        return;
+    }
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                const payload = {
+                    sessionId: sessionId || null,
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    userName,
+                    shareUntil,
+                    accuracy: position.coords.accuracy
+                };
+                console.log("sendLocation: Sending:", payload, "Accuracy:", position.coords.accuracy);
+                fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error(`Update failed: ${response.status}`);
+                    return response.text();
+                })
+                .then(data => console.log("sendLocation: Response:", data))
+                .catch(error => console.error("sendLocation: Error:", error.message));
+            },
+            error => console.error("sendLocation: Geolocation error:", error.message)
+        );
+    }
+}
 
             function updateMap() {
                 const url = sessionId
