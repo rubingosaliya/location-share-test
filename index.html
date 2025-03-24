@@ -12,6 +12,8 @@
         #user-controls { margin: 10px 0; }
         .user-checkbox { margin-right: 15px; }
         #session-info { margin: 10px 0; }
+        .expired-user { color: gray; }
+        #travel-mode { margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -23,13 +25,17 @@
     <div id="session-info" style="display: none;"></div>
     <div id="map"></div>
     <div id="user-controls"></div>
+    <div id="travel-mode">
+        <label for="mode-slider">Travel Mode: </label>
+        <input type="range" id="mode-slider" min="0" max="1" value="0" step="1">
+        <span id="mode-label">Walking</span>
+    </div>
 
     <script>
-        let map, markers = [], sessionId, userName, shareUntil, creatorName;
+        let map, markers = [], sessionId, userName, shareUntil, creatorName, sessionExpired = false;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
 
-        // Cookie helper functions
         function setCookie(name, value, hours) {
             const expires = new Date(Date.now() + hours * 3600000).toUTCString();
             document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
@@ -41,11 +47,10 @@
             return null;
         }
 
-        // Get or set clientId from cookie
         let clientId = getCookie('locationShareClientId');
         if (!clientId) {
             clientId = Math.random().toString(36).substr(2, 9);
-            setCookie('locationShareClientId', clientId, 24); // Set for 24 hours initially
+            setCookie('locationShareClientId', clientId, 24);
             console.log("Generated new clientId:", clientId);
         } else {
             console.log("Retrieved clientId from cookie:", clientId);
@@ -71,7 +76,14 @@
         function fetchSessionCreator() {
             fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getSession?sessionId=${sessionId}&clientId=${clientId}`)
                 .then(response => {
-                    if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
+                    if (!response.ok) {
+                        if (response.status === 410) {
+                            sessionExpired = true;
+                            document.body.innerHTML = '<h1>Session Ended</h1><p>The session has expired as defined by the creator.</p>';
+                            throw new Error('Session expired');
+                        }
+                        throw new Error(`Failed to fetch session: ${response.status}`);
+                    }
                     return response.json();
                 })
                 .then(data => {
@@ -80,7 +92,6 @@
                         userName = data.userName;
                         shareUntil = data.shareUntil;
                         visibleUsers.add(userName);
-                        // Update cookie expiration to match shareUntil
                         const hoursLeft = (shareUntil - Date.now()) / 3600000;
                         setCookie('locationShareClientId', clientId, hoursLeft);
                         console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
@@ -90,7 +101,7 @@
                 })
                 .catch(error => {
                     console.error("Error fetching session:", error.message);
-                    initMap();
+                    if (!sessionExpired) initMap();
                 });
         }
 
@@ -119,6 +130,8 @@
         }
 
         function initMap() {
+            if (sessionExpired) return;
+
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
 
             if (!userName) {
@@ -130,11 +143,11 @@
                     return;
                 }
                 shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
-                // Set cookie expiration to match shareUntil
                 const hoursLeft = parseFloat(shareDuration);
                 setCookie('locationShareClientId', clientId, hoursLeft);
                 console.log("User:", userName, "Sharing until:", new Date(shareUntil));
                 visibleUsers.add(userName);
+                visibleUsers.add(creatorName); // Auto-check creator
             }
 
             map = new google.maps.Map(document.getElementById('map'), {
@@ -143,6 +156,13 @@
                 mapId: 'aa476a0fd363ab03'
             });
             console.log("Map initialized");
+
+            // Travel mode slider
+            const slider = document.getElementById('mode-slider');
+            const label = document.getElementById('mode-label');
+            slider.addEventListener('input', () => {
+                label.textContent = slider.value === "0" ? "Walking" : "Driving";
+            });
 
             function setMapToUserLocation() {
                 if (navigator.geolocation) {
@@ -177,6 +197,7 @@
                                 lng: position.coords.longitude,
                                 userName,
                                 shareUntil,
+                                shareStart: Date.now(), // Track start time
                                 clientId,
                                 accuracy: position.coords.accuracy
                             };
@@ -248,22 +269,19 @@
                             }
                         });
 
-                        const creatorLoc = data.locations.find(loc => loc.name === creatorName && loc.active);
-                        const userLoc = data.locations.find(loc => loc.name === userName && loc.active);
-                        if (creatorLoc && userLoc) {
-                            const bounds = new google.maps.LatLngBounds();
-                            bounds.extend({ lat: creatorLoc.lat, lng: creatorLoc.lng });
-                            bounds.extend({ lat: userLoc.lat, lng: userLoc.lng });
-                            map.fitBounds(bounds);
-                            console.log("Map zoomed to bounds including creator and user:", bounds.toJSON());
-                        } else if (creatorLoc) {
-                            map.setCenter({ lat: creatorLoc.lat, lng: creatorLoc.lng });
-                            map.setZoom(15);
-                            console.log("Map centered on creator only");
-                        } else if (userLoc) {
-                            map.setCenter({ lat: userLoc.lat, lng: userLoc.lng });
-                            map.setZoom(15);
-                            console.log("Map centered on user only");
+                        // Auto-zoom only if creator is checked, include all visible users
+                        if (visibleUsers.has(creatorName)) {
+                            const visibleLocations = data.locations.filter(loc => loc.active && visibleUsers.has(loc.name));
+                            if (visibleLocations.length > 1) {
+                                const bounds = new google.maps.LatLngBounds();
+                                visibleLocations.forEach(loc => bounds.extend({ lat: loc.lat, lng: loc.lng }));
+                                map.fitBounds(bounds);
+                                console.log("Map zoomed to bounds of visible users:", bounds.toJSON());
+                            } else if (visibleLocations.length === 1) {
+                                map.setCenter({ lat: visibleLocations[0].lat, lng: visibleLocations[0].lng });
+                                map.setZoom(15);
+                                console.log("Map centered on single visible user:", visibleLocations[0].name);
+                            }
                         }
                     })
                     .catch(error => console.error("updateMap: Error:", error.message));
@@ -274,27 +292,34 @@
                 controlsDiv.innerHTML = '';
                 console.log("Updating user controls with locations:", locations);
                 locations.forEach(loc => {
-                    if (loc.active) {
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.id = `user-${loc.name}`;
-                        checkbox.className = 'user-checkbox';
-                        checkbox.checked = visibleUsers.has(loc.name);
-                        checkbox.addEventListener('change', () => {
-                            if (checkbox.checked) {
-                                visibleUsers.add(loc.name);
-                            } else {
-                                visibleUsers.delete(loc.name);
-                            }
-                            updateMap();
-                        });
-                        const label = document.createElement('label');
-                        label.htmlFor = `user-${loc.name}`;
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `user-${loc.name}`;
+                    checkbox.className = 'user-checkbox';
+                    checkbox.checked = visibleUsers.has(loc.name);
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) {
+                            visibleUsers.add(loc.name);
+                        } else {
+                            visibleUsers.delete(loc.name);
+                        }
+                        updateMap();
+                    });
+
+                    const label = document.createElement('label');
+                    label.htmlFor = `user-${loc.name}`;
+                    if (!loc.active) {
+                        const startTime = new Date(loc.shareStart).toLocaleTimeString();
+                        const endTime = new Date(loc.shareUntil).toLocaleTimeString();
+                        label.textContent = `${loc.name} (Shared: ${startTime} - ${endTime})`;
+                        label.className = 'expired-user';
+                        checkbox.disabled = true; // Disable checkbox for expired users
+                    } else {
                         label.textContent = loc.name;
-                        controlsDiv.appendChild(checkbox);
-                        controlsDiv.appendChild(label);
-                        console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked);
                     }
+                    controlsDiv.appendChild(checkbox);
+                    controlsDiv.appendChild(label);
+                    console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked, "Active:", loc.active);
                 });
             }
 
