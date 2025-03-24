@@ -21,6 +21,7 @@
 
     <script>
         let map, markers = [], sessionId, userName, shareUntil, creatorName;
+        const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF']; // Blue, Green, Purple, Orange, Cyan
 
         function checkSession() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -45,7 +46,7 @@
                 })
                 .catch(error => {
                     console.error("Error fetching session:", error.message);
-                    initMap(); // Proceed even if fetch fails
+                    initMap();
                 });
         }
 
@@ -87,7 +88,7 @@
         function initMap() {
             console.log("initMap: Session ID:", sessionId || "None (static mode)");
 
-            if (!userName) { // Prompt only if not set (i.e., not creator yet)
+            if (!userName) {
                 userName = prompt("Please enter your name:") || "Anonymous";
                 const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
@@ -164,7 +165,7 @@
                         console.log("updateMap: Locations:", data.locations);
                         markers.forEach(marker => marker.map = null);
                         markers = [];
-                        data.locations.forEach(loc => {
+                        data.locations.forEach((loc, index) => {
                             if (loc.active) {
                                 if (loc.name === creatorName) {
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
@@ -175,11 +176,12 @@
                                     });
                                     markers.push(marker);
                                 } else {
+                                    const color = userColors[index % userColors.length]; // Cycle through colors
                                     const marker = new google.maps.marker.AdvancedMarkerElement({
                                         position: { lat: loc.lat, lng: loc.lng },
                                         map: map,
                                         title: loc.name,
-                                        content: buildMarkerContent(loc.name)
+                                        content: buildUserPinContent(loc.name, color)
                                     });
                                     markers.push(marker);
                                 }
@@ -196,7 +198,7 @@
 
             function buildStandardPinContent(name) {
                 const pin = new google.maps.marker.PinElement({
-                    background: '#FF0000',
+                    background: '#FF0000', // Red for creator
                     borderColor: '#000000',
                     glyphColor: '#FFFFFF'
                 });
@@ -214,18 +216,22 @@
                 return div;
             }
 
-            function buildMarkerContent(name) {
-                const img = document.createElement('img');
-                img.src = 'https://rubingosaliya.github.io/location-share-test/favicon.ico';
-                img.style.width = '32px';
-                img.style.height = '32px';
+            function buildUserPinContent(name, color) {
+                const pin = new google.maps.marker.PinElement({
+                    background: color, // Unique color for each user
+                    borderColor: '#000000',
+                    glyphColor: '#FFFFFF'
+                });
                 const div = document.createElement('div');
                 div.style.textAlign = 'center';
-                div.appendChild(img);
+                div.appendChild(pin.element);
                 const label = document.createElement('div');
                 label.textContent = name;
                 label.style.color = '#000';
                 label.style.fontSize = '12px';
+                label.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                label.style.padding = '2px 4px';
+                label.style.borderRadius = '2px';
                 div.appendChild(label);
                 return div;
             }
