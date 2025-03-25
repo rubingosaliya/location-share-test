@@ -13,6 +13,7 @@
         .user-checkbox { margin-right: 15px; }
         #session-info { margin: 10px 0; }
         .expired-user { color: gray; }
+        .expired-user input[type="checkbox"] { opacity: 0.5; } /* Gray out checkbox */
         #travel-mode { margin: 10px 0; }
         #timer { position: absolute; top: 10px; right: 10px; font-size: 14px; background: rgba(255, 255, 255, 0.8); padding: 5px; border-radius: 3px; }
     </style>
@@ -165,12 +166,9 @@
                 center: { lat: 0, lng: 0 },
                 zoom: 2,
                 mapId: 'aa476a0fd363ab03',
-                minZoom: 2, // Minimum zoom level (world view)
-                maxZoom: 18, // Maximum zoom level (street level)
-                restriction: { // Optional: Restrict to world bounds
-                    latLngBounds: { north: 85, south: -85, west: -180, east: 180 },
-                    strictBounds: false
-                }
+                minZoom: 2,
+                maxZoom: 18,
+                restriction: { latLngBounds: { north: 85, south: -85, west: -180, east: 180 }, strictBounds: false }
             });
             console.log("Map initialized with boundaries");
 
@@ -270,13 +268,13 @@
 
                         updateUserControls(data.locations);
                         data.locations.forEach(loc => {
-                            if (visibleUsers.has(loc.name)) { // Show even if not active
+                            if (visibleUsers.has(loc.name)) {
                                 const color = loc.active ? loc.color : '#808080'; // Gray for expired
                                 const marker = new google.maps.marker.AdvancedMarkerElement({
                                     position: { lat: loc.lat, lng: loc.lng },
                                     map: map,
                                     title: loc.name,
-                                    content: loc.name === creatorName ? buildStandardPinContent(loc.name, color) : buildUserPinContent(loc.name, color)
+                                    content: buildPinContent(loc.name, color, loc.name === creatorName)
                                 });
                                 markers.push(marker);
                                 console.log(`Added marker for: ${loc.name}, Color: ${color}, Active: ${loc.active}`);
@@ -305,7 +303,6 @@
                 controlsDiv.innerHTML = '';
                 console.log("Updating user controls with locations:", locations);
 
-                // Sort locations based on user role
                 const sortedLocations = locations.sort((a, b) => {
                     if (userName === creatorName) {
                         if (a.name === creatorName) return -1;
@@ -342,42 +339,23 @@
 
                     const label = document.createElement('label');
                     label.htmlFor = `user-${loc.name}`;
+                    const wrapper = document.createElement('div');
                     if (!loc.active) {
                         const startTime = new Date(loc.shareStart).toLocaleTimeString();
                         const endTime = new Date(loc.shareUntil).toLocaleTimeString();
                         label.textContent = `${loc.name} (Shared: ${startTime} - ${endTime})`;
-                        label.className = 'expired-user';
-                        checkbox.disabled = false; // Keep enabled for visibility toggle
+                        wrapper.className = 'expired-user'; // Apply to wrapper for checkbox
                     } else {
                         label.textContent = loc.name;
                     }
-                    controlsDiv.appendChild(checkbox);
-                    controlsDiv.appendChild(label);
+                    wrapper.appendChild(checkbox);
+                    wrapper.appendChild(label);
+                    controlsDiv.appendChild(wrapper);
                     console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked, "Active:", loc.active);
                 });
             }
 
-            function buildStandardPinContent(name, color) {
-                const pin = new google.maps.marker.PinElement({
-                    background: color,
-                    borderColor: '#000000',
-                    glyphColor: '#FFFFFF'
-                });
-                const div = document.createElement('div');
-                div.style.textAlign = 'center';
-                div.appendChild(pin.element);
-                const label = document.createElement('div');
-                label.textContent = name;
-                label.style.color = '#000';
-                label.style.fontSize = '12px';
-                label.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-                label.style.padding = '2px 4px';
-                label.style.borderRadius = '2px';
-                div.appendChild(label);
-                return div;
-            }
-
-            function buildUserPinContent(name, color) {
+            function buildPinContent(name, color, isCreator) {
                 const pin = new google.maps.marker.PinElement({
                     background: color,
                     borderColor: '#000000',
