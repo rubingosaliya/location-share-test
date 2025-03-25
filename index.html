@@ -14,6 +14,7 @@
         #session-info { margin: 10px 0; }
         .expired-user { color: gray; }
         #travel-mode { margin: 10px 0; }
+        #timer { position: absolute; top: 10px; right: 10px; font-size: 14px; background: rgba(255, 255, 255, 0.8); padding: 5px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -23,6 +24,7 @@
         <p id="share-link" style="display: none;">Share this link: <a href="#" id="link"></a></p>
     </div>
     <div id="session-info" style="display: none;"></div>
+    <div id="timer"></div>
     <div id="map"></div>
     <div id="user-controls"></div>
     <div id="travel-mode">
@@ -32,11 +34,10 @@
     </div>
 
     <script>
-        let map, markers = [], sessionId, userName, shareUntil, creatorName, sessionExpired = false;
+        let map, markers = [], sessionId, userName, shareUntil, creatorName, sessionExpired = false, sessionEndTime;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
 
-        // Cookie helper functions
         function setCookie(name, value, hours) {
             const expires = new Date(Date.now() + hours * 3600000).toUTCString();
             document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
@@ -48,7 +49,6 @@
             return null;
         }
 
-        // Load clientId and visibleUsers from cookies
         let clientId = getCookie('locationShareClientId');
         if (!clientId) {
             clientId = Math.random().toString(36).substr(2, 9);
@@ -62,7 +62,6 @@
             const urlParams = new URLSearchParams(window.location.search);
             sessionId = urlParams.get('session');
             if (sessionId) {
-                // Load visibleUsers from cookie specific to this session
                 const visibleUsersCookie = getCookie(`visibleUsers_${sessionId}`);
                 if (visibleUsersCookie) {
                     visibleUsers = new Set(JSON.parse(visibleUsersCookie));
@@ -96,6 +95,7 @@
                 })
                 .then(data => {
                     creatorName = data.creatorName;
+                    sessionEndTime = data.expirationTime; // Get session end time
                     if (data.userName && data.shareUntil > Date.now()) {
                         userName = data.userName;
                         shareUntil = data.shareUntil;
@@ -105,7 +105,7 @@
                         setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
                         console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
                     }
-                    console.log("Session creator:", creatorName);
+                    console.log("Session creator:", creatorName, "Session ends at:", new Date(sessionEndTime));
                     initMap();
                 })
                 .catch(error => {
@@ -128,6 +128,7 @@
                 })
                 .then(data => {
                     sessionId = data.sessionId;
+                    sessionEndTime = data.expiresAt; // Store session end time
                     console.log("Event created:", data);
                     document.getElementById('share-link').style.display = 'block';
                     const linkElement = document.getElementById('link');
@@ -155,7 +156,7 @@
                 const hoursLeft = parseFloat(shareDuration);
                 setCookie('locationShareClientId', clientId, hoursLeft);
                 visibleUsers.add(userName);
-                visibleUsers.add(creatorName); // Auto-check creator
+                visibleUsers.add(creatorName);
                 setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
                 console.log("User:", userName, "Sharing until:", new Date(shareUntil));
             }
@@ -166,6 +167,16 @@
                 mapId: 'aa476a0fd363ab03'
             });
             console.log("Map initialized");
+
+            // Timer display
+            function updateTimer() {
+                const timerDiv = document.getElementById('timer');
+                const sessionEnd = new Date(sessionEndTime).toLocaleString();
+                const shareEnd = new Date(shareUntil).toLocaleString();
+                timerDiv.innerHTML = `Session ends at: ${sessionEnd}<br>Location sharing until: ${shareEnd}`;
+            }
+            updateTimer();
+            setInterval(updateTimer, 1000); // Update every second
 
             const slider = document.getElementById('mode-slider');
             const label = document.getElementById('mode-label');
@@ -253,28 +264,17 @@
                         markers = [];
 
                         updateUserControls(data.locations);
-                        data.locations.forEach((loc, index) => {
+                        data.locations.forEach(loc => {
                             if (loc.active && visibleUsers.has(loc.name)) {
-                                if (loc.name === creatorName) {
-                                    const marker = new google.maps.marker.AdvancedMarkerElement({
-                                        position: { lat: loc.lat, lng: loc.lng },
-                                        map: map,
-                                        title: loc.name,
-                                        content: buildStandardPinContent(loc.name)
-                                    });
-                                    markers.push(marker);
-                                    console.log("Added creator marker for:", loc.name);
-                                } else {
-                                    const color = userColors[index % userColors.length];
-                                    const marker = new google.maps.marker.AdvancedMarkerElement({
-                                        position: { lat: loc.lat, lng: loc.lng },
-                                        map: map,
-                                        title: loc.name,
-                                        content: buildUserPinContent(loc.name, color)
-                                    });
-                                    markers.push(marker);
-                                    console.log("Added user marker for:", loc.name, "Color:", color);
-                                }
+                                const color = loc.color || (loc.name === creatorName ? '#FF0000' : userColors[Math.abs(hashString(loc.name)) % userColors.length]);
+                                const marker = new google.maps.marker.AdvancedMarkerElement({
+                                    position: { lat: loc.lat, lng: loc.lng },
+                                    map: map,
+                                    title: loc.name,
+                                    content: loc.name === creatorName ? buildStandardPinContent(loc.name) : buildUserPinContent(loc.name, color)
+                                });
+                                markers.push(marker);
+                                console.log(`Added marker for: ${loc.name}, Color: ${color}`);
                             }
                         });
 
@@ -293,6 +293,15 @@
                         }
                     })
                     .catch(error => console.error("updateMap: Error:", error.message));
+            }
+
+            // Simple hash function for consistent color assignment
+            function hashString(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                return hash;
             }
 
             function updateUserControls(locations) {
