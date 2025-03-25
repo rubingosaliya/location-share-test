@@ -33,8 +33,8 @@
         let polylines = [], lastKnownPosition = null;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
-        const MIN_DISTANCE_THRESHOLD = 1.5; // ~5 ft in meters
-        const MAX_ACCURACY_THRESHOLD = 10; // Max acceptable accuracy in meters
+        const MIN_DISTANCE_THRESHOLD = 0.5; // ~5 ft in meters
+        const MAX_ACCURACY_THRESHOLD = 5; // Max acceptable accuracy in meters
 
         function setCookie(name, value, hours) {
             const expires = new Date(Date.now() + hours * 3600000).toUTCString();
