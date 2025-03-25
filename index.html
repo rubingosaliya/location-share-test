@@ -13,7 +13,7 @@
         .user-checkbox { margin-right: 15px; }
         #session-info { margin: 10px 0; }
         .expired-user { color: gray; }
-        .expired-user input[type="checkbox"] { opacity: 0.5; } /* Gray out checkbox */
+        .expired-user input[type="checkbox"] { opacity: 0.5; }
         #travel-mode { margin: 10px 0; }
         #timer { position: absolute; top: 10px; right: 10px; font-size: 14px; background: rgba(255, 255, 255, 0.8); padding: 5px; border-radius: 3px; }
     </style>
@@ -148,7 +148,7 @@
             if (!userName) {
                 userName = prompt("Please enter your name:") || "Anonymous";
                 if (!creatorName) creatorName = userName;
-                const shareDuration = prompt("How long do you want to share your location (hours, e.g., 1.5)?");
+                const shareDuration = prompt("How long do you want to share your location (hours, e.g., 0.01)?");
                 if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
                     alert("Please enter a valid sharing duration");
                     return;
@@ -208,7 +208,8 @@
 
             function sendLocation() {
                 if (Date.now() > shareUntil) {
-                    console.log("sendLocation: Sharing expired for", userName);
+                    console.log("sendLocation: Sharing expired for", userName, "at", new Date());
+                    updateMap(); // Force update to reflect expiration
                     return;
                 }
                 if (navigator.geolocation) {
@@ -255,21 +256,23 @@
                 const url = sessionId
                     ? `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?sessionId=${sessionId}`
                     : `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?userName=${encodeURIComponent(userName)}`;
-                console.log("updateMap: Fetching from:", url);
+                console.log("updateMap: Fetching from:", url, "Current time:", new Date());
                 fetch(url)
                     .then(response => {
                         if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
                         return response.json();
                     })
                     .then(data => {
-                        console.log("updateMap: Locations:", data.locations);
+                        console.log("updateMap: Locations received:", data.locations);
                         markers.forEach(marker => marker.map = null);
                         markers = [];
 
                         updateUserControls(data.locations);
                         data.locations.forEach(loc => {
+                            const isExpired = Date.now() > loc.shareUntil; // Double-check expiration
+                            console.log(`User: ${loc.name}, ShareUntil: ${new Date(loc.shareUntil)}, Active: ${loc.active}, Expired: ${isExpired}`);
                             if (visibleUsers.has(loc.name)) {
-                                const color = loc.active ? loc.color : '#808080'; // Gray for expired
+                                const color = isExpired ? '#808080' : loc.color; // Use expiration check
                                 const marker = new google.maps.marker.AdvancedMarkerElement({
                                     position: { lat: loc.lat, lng: loc.lng },
                                     map: map,
@@ -277,7 +280,7 @@
                                     content: buildPinContent(loc.name, color, loc.name === creatorName)
                                 });
                                 markers.push(marker);
-                                console.log(`Added marker for: ${loc.name}, Color: ${color}, Active: ${loc.active}`);
+                                console.log(`Added marker for: ${loc.name}, Color: ${color}, Expired: ${isExpired}`);
                             }
                         });
 
@@ -301,7 +304,7 @@
             function updateUserControls(locations) {
                 const controlsDiv = document.getElementById('user-controls');
                 controlsDiv.innerHTML = '';
-                console.log("Updating user controls with locations:", locations);
+                console.log("updateUserControls: Processing locations:", locations);
 
                 const sortedLocations = locations.sort((a, b) => {
                     if (userName === creatorName) {
@@ -318,6 +321,7 @@
                 });
 
                 sortedLocations.forEach(loc => {
+                    const isExpired = Date.now() > loc.shareUntil; // Client-side expiration check
                     const checkbox = document.createElement('input');
                     checkbox.type = 'checkbox';
                     checkbox.id = `user-${loc.name}`;
@@ -340,18 +344,19 @@
                     const label = document.createElement('label');
                     label.htmlFor = `user-${loc.name}`;
                     const wrapper = document.createElement('div');
-                    if (!loc.active) {
+                    if (isExpired) {
                         const startTime = new Date(loc.shareStart).toLocaleTimeString();
                         const endTime = new Date(loc.shareUntil).toLocaleTimeString();
                         label.textContent = `${loc.name} (Shared: ${startTime} - ${endTime})`;
-                        wrapper.className = 'expired-user'; // Apply to wrapper for checkbox
+                        wrapper.className = 'expired-user';
+                        console.log(`User ${loc.name} marked as expired`);
                     } else {
                         label.textContent = loc.name;
                     }
                     wrapper.appendChild(checkbox);
                     wrapper.appendChild(label);
                     controlsDiv.appendChild(wrapper);
-                    console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked, "Active:", loc.active);
+                    console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked, "Expired:", isExpired);
                 });
             }
 
@@ -378,8 +383,8 @@
             setMapToUserLocation();
             sendLocation();
             updateMap();
-            setInterval(sendLocation, 10000);
-            setInterval(updateMap, 10000);
+            setInterval(sendLocation, 5000); // Reduced to 5s for faster testing
+            setInterval(updateMap, 5000); // Reduced to 5s for faster testing
         }
     </script>
 </body>
