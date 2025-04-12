@@ -42,8 +42,8 @@
         let polylines = [], lastKnownPosition = null;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
-        const MIN_DISTANCE_THRESHOLD = 0.5; // ~1.6 ft in meters
-        const MAX_ACCURACY_THRESHOLD = 5; // Max acceptable accuracy in meters
+        const MIN_DISTANCE_THRESHOLD = 1.5; // ~5 ft in meters
+        const MAX_ACCURACY_THRESHOLD = 10; // Max acceptable accuracy in meters
 
         function setCookie(name, value, hours) {
             const expires = new Date(Date.now() + hours * 3600000).toUTCString();
@@ -130,7 +130,9 @@
             console.log("Creating event with duration:", duration);
             fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}`)
                 .then(response => {
-                    if (!response.ok) throw new Error(`Failed to create event: ${response.status}`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to create event: ${response.status}`);
+                    }
                     return response.json();
                 })
                 .then(data => {
@@ -143,7 +145,10 @@
                     linkElement.textContent = data.shareLink;
                     window.location.href = data.shareLink;
                 })
-                .catch(error => console.error('Error creating event:', error.message));
+                .catch(error => {
+                    console.error("Error creating event:", error.message);
+                    alert(`Failed to create event: ${error.message}. Please try again.`);
+                });
         }
 
         function initMap() {
@@ -170,7 +175,7 @@
 
             map = L.map('map').setView([0, 0], 2);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 minZoom: 2,
                 maxZoom: 18,
                 bounds: [[-85, -180], [85, 180]]
@@ -179,8 +184,8 @@
 
             function updateTimer() {
                 const timerDiv = document.getElementById('timer');
-                const sessionEnd = new Date(sessionEndTime).toLocaleString();
-                const shareEnd = new Date(shareUntil).toLocaleString();
+                const sessionEnd = sessionEndTime ? new Date(sessionEndTime).toLocaleString() : 'Not set';
+                const shareEnd = shareUntil ? new Date(shareUntil).toLocaleString() : 'Not set';
                 timerDiv.innerHTML = `Session ends at: ${sessionEnd}<br>Location sharing until: ${shareEnd}`;
             }
             updateTimer();
@@ -195,7 +200,7 @@
                         },
                         error => {
                             console.error("Geolocation error in setMapToUserLocation:", error.message, "Code:", error.code);
-                            alert("Location access denied. Please allow location permissions in Safari settings to share your position.");
+                            alert("Location access denied. Please allow location permissions to share your position.");
                         },
                         { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
                     );
@@ -271,7 +276,10 @@
                                 console.log("sendLocation: Response:", data);
                                 updateMap();
                             })
-                            .catch(error => console.error("sendLocation: Fetch error:", error.message));
+                            .catch(error => {
+                                console.error("sendLocation: Fetch error:", error.message);
+                                alert("Failed to update location. Please check your network and try again.");
+                            });
                         },
                         error => {
                             console.error("sendLocation: Geolocation error:", error.message, "Code:", error.code);
@@ -422,12 +430,7 @@
                 });
             }
 
-            setMapToUserLocation();
-            sendLocation();
-            updateMap();
-            setInterval(sendLocation, 5000);
-            setInterval(updateMap, 5000);
-        }
-    </script>
+            checkSession();
+        </script>
 </body>
 </html>
