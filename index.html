@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Location Share</title>
-    <script async defer src="https://maps.google.com/maps/api/js?key=AIzaSyCtk-cv518k28_YbwytXpeu3-DAg92mAA4&libraries=maps,marker&callback=checkSession"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <link rel="icon" type="image/x-icon" href="/location-share-test/favicon.ico">
     <style>
         #map { height: 400px; width: 100%; }
@@ -14,7 +15,15 @@
         #session-info { margin: 10px 0; }
         .expired-user { color: gray; }
         .expired-user input[type="checkbox"] { opacity: 0.5; }
-        #timer { position: absolute; top: 10px; right: 10px; font-size: 14px; background: rgba(255, 255, 255, 0.8); padding: 5px; border-radius: 3px; }
+        #timer { position: absolute; top: 10px; right: 10px; font-size: 14px; background: rgba(255, 255, 255, 0.8); padding: 5px; border-radius: 3px; z-index: 1000; }
+        .leaflet-marker-label { 
+            color: #000; 
+            font-size: 12px; 
+            background-color: rgba(255, 255, 255, 0.8); 
+            padding: 2px 4px; 
+            border-radius: 2px; 
+            text-align: center; 
+        }
     </style>
 </head>
 <body>
@@ -33,7 +42,7 @@
         let polylines = [], lastKnownPosition = null;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
         let visibleUsers = new Set();
-        const MIN_DISTANCE_THRESHOLD = 0.5; // ~5 ft in meters
+        const MIN_DISTANCE_THRESHOLD = 0.5; // ~1.6 ft in meters
         const MAX_ACCURACY_THRESHOLD = 5; // Max acceptable accuracy in meters
 
         function setCookie(name, value, hours) {
@@ -118,7 +127,7 @@
                 alert("Please enter a valid duration between 0 and 24 hours");
                 return;
             }
-            console.log("Creating event with distance:", duration);
+            console.log("Creating event with duration:", duration);
             fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}`)
                 .then(response => {
                     if (!response.ok) throw new Error(`Failed to create event: ${response.status}`);
@@ -159,15 +168,14 @@
                 console.log("User:", userName, "Sharing until:", new Date(shareUntil));
             }
 
-            map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 0, lng: 0 },
-                zoom: 2,
-                mapId: 'aa476a0fd363ab03',
+            map = L.map('map').setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 minZoom: 2,
                 maxZoom: 18,
-                restriction: { latLngBounds: { north: 85, south: -85, west: -180, east: 180 }, strictBounds: false }
-            });
-            console.log("Map initialized with boundaries");
+                bounds: [[-85, -180], [85, 180]]
+            }).addTo(map);
+            console.log("Map initialized with OSM tiles");
 
             function updateTimer() {
                 const timerDiv = document.getElementById('timer');
@@ -182,8 +190,7 @@
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
                         position => {
-                            map.setCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
-                            map.setZoom(15);
+                            map.setView([position.coords.latitude, position.coords.longitude], 15);
                             console.log("Map centered to:", position.coords.latitude, position.coords.longitude);
                         },
                         error => {
@@ -223,13 +230,11 @@
                             const newLng = position.coords.longitude;
                             const accuracy = position.coords.accuracy;
 
-                            // Check accuracy
                             if (accuracy > MAX_ACCURACY_THRESHOLD) {
                                 console.log(`sendLocation: Ignoring update - accuracy too low (${accuracy}m)`);
                                 return;
                             }
 
-                            // Check distance from last known position
                             if (lastKnownPosition) {
                                 const distance = calculateDistance(
                                     lastKnownPosition.lat, lastKnownPosition.lng,
@@ -272,12 +277,32 @@
                             console.error("sendLocation: Geolocation error:", error.message, "Code:", error.code);
                             alert("Location access denied. Please enable it in settings to see your marker.");
                         },
-                        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 } // High accuracy settings
+                        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
                     );
                 } else {
                     console.error("Geolocation not supported by browser");
                     alert("Your browser doesn’t support geolocation.");
                 }
+            }
+
+            function buildPinContent(name, color, isCreator) {
+                const icon = L.divIcon({
+                    className: 'custom-pin',
+                    html: `
+                        <div style="text-align: center;">
+                            <svg width="24" height="24" viewBox="0 0 24 24">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" 
+                                      fill="${color}" stroke="#000000" stroke-width="1"/>
+                                <circle cx="12" cy="9" r="2.5" fill="#FFFFFF"/>
+                            </svg>
+                            <div class="leaflet-marker-label">${name}</div>
+                        </div>
+                    `,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 24],
+                    popupAnchor: [0, -24]
+                });
+                return icon;
             }
 
             function updateMap() {
@@ -292,9 +317,9 @@
                     })
                     .then(data => {
                         console.log("updateMap: Locations received:", data.locations);
-                        markers.forEach(marker => marker.map = null);
+                        markers.forEach(marker => map.removeLayer(marker));
                         markers = [];
-                        polylines.forEach(poly => poly.setMap(null));
+                        polylines.forEach(poly => map.removeLayer(poly));
                         polylines = [];
 
                         updateUserControls(data.locations);
@@ -303,27 +328,22 @@
                             console.log(`User: ${loc.name}, ShareUntil: ${new Date(loc.shareUntil)}, Active: ${loc.active}, Expired: ${isExpired}`);
                             if (visibleUsers.has(loc.name)) {
                                 const color = isExpired ? '#808080' : loc.color;
-                                const marker = new google.maps.marker.AdvancedMarkerElement({
-                                    position: { lat: loc.lat, lng: loc.lng },
-                                    map: map,
+                                const marker = L.marker([loc.lat, loc.lng], {
                                     title: loc.name,
-                                    content: buildPinContent(loc.name, color, loc.name === creatorName)
-                                });
+                                    icon: buildPinContent(loc.name, color, loc.name === creatorName)
+                                }).addTo(map);
                                 markers.push(marker);
                                 console.log(`Added marker for: ${loc.name}, Color: ${color}, Expired: ${isExpired}`);
 
                                 if (loc.history && loc.history.length > 1) {
-                                    const path = loc.history.map(h => ({ lat: h.lat, lng: h.lng }));
-                                    const polyline = new google.maps.Polyline({
-                                        path: path,
-                                        geodesic: true,
-                                        strokeColor: isExpired ? '#808080' : loc.color,
-                                        strokeOpacity: 1.0,
-                                        strokeWeight: 2,
-                                        map: map
-                                    });
+                                    const path = loc.history.map(h => [h.lat, h.lng]);
+                                    const polyline = L.polyline(path, {
+                                        color: isExpired ? '#808080' : loc.color,
+                                        opacity: 1.0,
+                                        weight: 2
+                                    }).addTo(map);
                                     polylines.push(polyline);
-                                    console.log(`Added route for ${loc.name}, Points: ${loc.history.length}, Color: ${polyline.strokeColor}`);
+                                    console.log(`Added route for ${loc.name}, Points: ${loc.history.length}, Color: ${polyline.options.color}`);
                                 }
                             }
                         });
@@ -331,13 +351,11 @@
                         if (visibleUsers.has(creatorName)) {
                             const visibleLocations = data.locations.filter(loc => visibleUsers.has(loc.name));
                             if (visibleLocations.length > 1) {
-                                const bounds = new google.maps.LatLngBounds();
-                                visibleLocations.forEach(loc => bounds.extend({ lat: loc.lat, lng: loc.lng }));
+                                const bounds = L.latLngBounds(visibleLocations.map(loc => [loc.lat, loc.lng]));
                                 map.fitBounds(bounds);
-                                console.log("Map zoomed to bounds of visible users:", bounds.toJSON());
+                                console.log("Map zoomed to bounds of visible users:", bounds.toBBoxString());
                             } else if (visibleLocations.length === 1) {
-                                map.setCenter({ lat: visibleLocations[0].lat, lng: visibleLocations[0].lng });
-                                map.setZoom(15);
+                                map.setView([visibleLocations[0].lat, visibleLocations[0].lng], 15);
                                 console.log("Map centered on single visible user:", visibleLocations[0].name);
                             }
                         }
@@ -402,26 +420,6 @@
                     controlsDiv.appendChild(wrapper);
                     console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked, "Expired:", isExpired);
                 });
-            }
-
-            function buildPinContent(name, color, isCreator) {
-                const pin = new google.maps.marker.PinElement({
-                    background: color,
-                    borderColor: '#000000',
-                    glyphColor: '#FFFFFF'
-                });
-                const div = document.createElement('div');
-                div.style.textAlign = 'center';
-                div.appendChild(pin.element);
-                const label = document.createElement('div');
-                label.textContent = name;
-                label.style.color = '#000';
-                label.style.fontSize = '12px';
-                label.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-                label.style.padding = '2px 4px';
-                label.style.borderRadius = '2px';
-                div.appendChild(label);
-                return div;
             }
 
             setMapToUserLocation();
