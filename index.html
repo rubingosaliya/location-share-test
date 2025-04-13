@@ -24,10 +24,12 @@
             border-radius: 2px; 
             text-align: center; 
         }
+        #error-message { color: red; margin: 10px 0; display: none; }
     </style>
 </head>
 <body>
     <h1>Location Share</h1>
+    <div id="error-message"></div>
     <div id="event-creation" style="display: none;">
         <button id="createEventBtn">Create New Event</button>
         <p id="share-link" style="display: none;">Share this link: <a href="#" id="link"></a></p>
@@ -38,6 +40,7 @@
     <div id="user-controls"></div>
 
     <script>
+        console.log('[FRONTEND] Script started');
         let map, markers = [], sessionId, userName, shareUntil, creatorName, sessionExpired = false, sessionEndTime;
         let polylines = [], lastKnownPosition = null;
         const userColors = ['#0000FF', '#00FF00', '#800080', '#FFA500', '#00FFFF'];
@@ -45,51 +48,84 @@
         const MIN_DISTANCE_THRESHOLD = 1.5; // ~5 ft in meters
         const MAX_ACCURACY_THRESHOLD = 10; // Max acceptable accuracy in meters
 
-        function setCookie(name, value, hours) {
-            const expires = new Date(Date.now() + hours * 3600000).toUTCString();
-            document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            console.error('[FRONTEND] Error displayed:', message);
         }
+
+        function setCookie(name, value, hours) {
+            try {
+                console.log('[FRONTEND] Setting cookie:', name);
+                const expires = new Date(Date.now() + hours * 3600000).toUTCString();
+                document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+            } catch (error) {
+                console.error('[FRONTEND] Error setting cookie:', error.message);
+            }
+        }
+
         function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
-            return null;
+            try {
+                console.log('[FRONTEND] Getting cookie:', name);
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) {
+                    const cookieValue = decodeURIComponent(parts.pop().split(';').shift());
+                    console.log('[FRONTEND] Cookie found:', name, '=', cookieValue);
+                    return cookieValue;
+                }
+                console.log('[FRONTEND] Cookie not found:', name);
+                return null;
+            } catch (error) {
+                console.error('[FRONTEND] Error getting cookie:', error.message);
+                return null;
+            }
         }
 
         let clientId = getCookie('locationShareClientId');
         if (!clientId) {
             clientId = Math.random().toString(36).substr(2, 9);
             setCookie('locationShareClientId', clientId, 24);
-            console.log("Generated new clientId:", clientId);
+            console.log('[FRONTEND] Generated new clientId:', clientId);
         } else {
-            console.log("Retrieved clientId from cookie:", clientId);
+            console.log('[FRONTEND] Retrieved clientId from cookie:', clientId);
         }
 
         function checkSession() {
-            const urlParams = new URLSearchParams(window.location.search);
-            sessionId = urlParams.get('session');
-            if (sessionId) {
-                const visibleUsersCookie = getCookie(`visibleUsers_${sessionId}`);
-                if (visibleUsersCookie) {
-                    visibleUsers = new Set(JSON.parse(visibleUsersCookie));
-                    console.log("Loaded visibleUsers from cookie:", Array.from(visibleUsers));
+            console.log('[FRONTEND] checkSession called');
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                sessionId = urlParams.get('session');
+                console.log('[FRONTEND] Session ID from URL:', sessionId);
+                if (sessionId) {
+                    const visibleUsersCookie = getCookie(`visibleUsers_${sessionId}`);
+                    if (visibleUsersCookie) {
+                        visibleUsers = new Set(JSON.parse(visibleUsersCookie));
+                        console.log('[FRONTEND] Loaded visibleUsers from cookie:', Array.from(visibleUsers));
+                    }
+                    document.getElementById('event-creation').style.display = 'none';
+                    document.getElementById('session-info').style.display = 'block';
+                    const sessionLink = `https://rubingosaliya.github.io/location-share-test/?session=${sessionId}`;
+                    document.getElementById('session-info').innerHTML = `Session Link: <a href="${sessionLink}" target="_blank">${sessionLink}</a>`;
+                    fetchSessionCreator();
+                } else {
+                    console.log('[FRONTEND] No session ID, auto-creating event');
+                    document.getElementById('event-creation').style.display = 'none';
+                    document.getElementById('session-info').style.display = 'none';
+                    createEvent();
                 }
-                document.getElementById('event-creation').style.display = 'none';
-                document.getElementById('session-info').style.display = 'block';
-                const sessionLink = `https://rubingosaliya.github.io/location-share-test/?session=${sessionId}`;
-                document.getElementById('session-info').innerHTML = `Session Link: <a href="${sessionLink}" target="_blank">${sessionLink}</a>`;
-                fetchSessionCreator();
-            } else {
-                console.log("No session ID, auto-creating event");
-                document.getElementById('event-creation').style.display = 'none';
-                document.getElementById('session-info').style.display = 'none';
-                createEvent();
+            } catch (error) {
+                console.error('[FRONTEND] Error in checkSession:', error.message);
+                showError('Failed to initialize session. Please refresh the page.');
             }
         }
 
         function fetchSessionCreator() {
+            console.log('[FRONTEND] fetchSessionCreator called with sessionId:', sessionId);
             fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getSession?sessionId=${sessionId}&clientId=${clientId}`)
                 .then(response => {
+                    console.log('[FRONTEND] fetchSessionCreator response status:', response.status);
                     if (!response.ok) {
                         if (response.status === 410) {
                             sessionExpired = true;
@@ -101,6 +137,7 @@
                     return response.json();
                 })
                 .then(data => {
+                    console.log('[FRONTEND] fetchSessionCreator data:', data);
                     creatorName = data.creatorName;
                     sessionEndTime = data.expirationTime;
                     if (data.userName && data.shareUntil > Date.now()) {
@@ -110,35 +147,39 @@
                         const hoursLeft = (shareUntil - Date.now()) / 3600000;
                         setCookie('locationShareClientId', clientId, hoursLeft);
                         setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
-                        console.log("Restored from backend:", userName, "Sharing until:", new Date(shareUntil));
+                        console.log('[FRONTEND] Restored from backend:', userName, 'Sharing until:', new Date(shareUntil));
                     }
-                    console.log("Session creator:", creatorName, "Session ends at:", new Date(sessionEndTime));
+                    console.log('[FRONTEND] Session creator:', creatorName, 'Session ends at:', new Date(sessionEndTime));
                     initMap();
                 })
                 .catch(error => {
-                    console.error("Error fetching session:", error.message);
+                    console.error('[FRONTEND] Error fetching session:', error.message);
+                    showError('Unable to connect to server. Please check your network and try again.');
                     if (!sessionExpired) initMap();
                 });
         }
 
         function createEvent() {
+            console.log('[FRONTEND] createEvent called');
             const duration = prompt("How long should this event last (hours, e.g., 2.5)?");
             if (!duration || isNaN(duration) || duration <= 0 || duration > 24) {
+                console.log('[FRONTEND] Invalid duration entered:', duration);
                 alert("Please enter a valid duration between 0 and 24 hours");
                 return;
             }
-            console.log("Creating event with duration:", duration);
+            console.log('[FRONTEND] Creating event with duration:', duration);
             fetch(`https://location-share-backend-rubin-gosaliyas-projects.vercel.app/createEvent?duration=${duration}`)
                 .then(response => {
+                    console.log('[FRONTEND] createEvent response status:', response.status);
                     if (!response.ok) {
                         throw new Error(`Failed to create event: ${response.status}`);
                     }
                     return response.json();
                 })
                 .then(data => {
+                    console.log('[FRONTEND] Event created:', data);
                     sessionId = data.sessionId;
                     sessionEndTime = data.expiresAt;
-                    console.log("Event created:", data);
                     document.getElementById('share-link').style.display = 'block';
                     const linkElement = document.getElementById('link');
                     linkElement.href = data.shareLink;
@@ -146,291 +187,327 @@
                     window.location.href = data.shareLink;
                 })
                 .catch(error => {
-                    console.error("Error creating event:", error.message);
-                    alert(`Failed to create event: ${error.message}. Please try again.`);
+                    console.error('[FRONTEND] Error creating event:', error.message);
+                    showError(`Failed to create event: ${error.message}. Please try again.`);
                 });
         }
 
         function initMap() {
-            if (sessionExpired) return;
+            console.log('[FRONTEND] initMap called');
+            if (sessionExpired) {
+                console.log('[FRONTEND] Session expired, skipping map init');
+                return;
+            }
 
-            console.log("initMap: Session ID:", sessionId || "None (static mode)");
-
-            if (!userName) {
-                userName = prompt("Please enter your name:") || "Anonymous";
-                if (!creatorName) creatorName = userName;
-                const shareDuration = prompt("How long do you want to share your location (hours, e.g., 0.01)?");
-                if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
-                    alert("Please enter a valid sharing duration");
-                    return;
+            try {
+                if (!userName) {
+                    userName = prompt("Please enter your name:") || "Anonymous";
+                    console.log('[FRONTEND] User name set:', userName);
+                    if (!creatorName) creatorName = userName;
+                    const shareDuration = prompt("How long do you want to share your location (hours, e.g., 0.01)?");
+                    if (!shareDuration || isNaN(shareDuration) || shareDuration <= 0) {
+                        console.log('[FRONTEND] Invalid share duration:', shareDuration);
+                        alert("Please enter a valid sharing duration");
+                        return;
+                    }
+                    shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
+                    const hoursLeft = parseFloat(shareDuration);
+                    setCookie('locationShareClientId', clientId, hoursLeft);
+                    visibleUsers.add(userName);
+                    visibleUsers.add(creatorName);
+                    setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
+                    console.log('[FRONTEND] User:', userName, 'Sharing until:', new Date(shareUntil));
                 }
-                shareUntil = Date.now() + parseFloat(shareDuration) * 3600000;
-                const hoursLeft = parseFloat(shareDuration);
-                setCookie('locationShareClientId', clientId, hoursLeft);
-                visibleUsers.add(userName);
-                visibleUsers.add(creatorName);
-                setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
-                console.log("User:", userName, "Sharing until:", new Date(shareUntil));
-            }
 
-            map = L.map('map').setView([0, 0], 2);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                minZoom: 2,
-                maxZoom: 18,
-                bounds: [[-85, -180], [85, 180]]
-            }).addTo(map);
-            console.log("Map initialized with OSM tiles");
+                map = L.map('map').setView([0, 0], 2);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    minZoom: 2,
+                    maxZoom: 18,
+                    bounds: [[-85, -180], [85, 180]]
+                }).addTo(map);
+                console.log('[FRONTEND] Map initialized with OSM tiles');
 
-            function updateTimer() {
-                const timerDiv = document.getElementById('timer');
-                const sessionEnd = sessionEndTime ? new Date(sessionEndTime).toLocaleString() : 'Not set';
-                const shareEnd = shareUntil ? new Date(shareUntil).toLocaleString() : 'Not set';
-                timerDiv.innerHTML = `Session ends at: ${sessionEnd}<br>Location sharing until: ${shareEnd}`;
-            }
-            updateTimer();
-            setInterval(updateTimer, 1000);
-
-            function setMapToUserLocation() {
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        position => {
-                            map.setView([position.coords.latitude, position.coords.longitude], 15);
-                            console.log("Map centered to:", position.coords.latitude, position.coords.longitude);
-                        },
-                        error => {
-                            console.error("Geolocation error in setMapToUserLocation:", error.message, "Code:", error.code);
-                            alert("Location access denied. Please allow location permissions to share your position.");
-                        },
-                        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-                    );
-                } else {
-                    console.error("Geolocation not supported by browser");
-                    alert("Your browser doesn’t support geolocation. Location sharing won’t work.");
+                function updateTimer() {
+                    console.log('[FRONTEND] updateTimer called');
+                    try {
+                        const timerDiv = document.getElementById('timer');
+                        const sessionEnd = sessionEndTime ? new Date(sessionEndTime).toLocaleString() : 'Not set';
+                        const shareEnd = shareUntil ? new Date(shareUntil).toLocaleString() : 'Not set';
+                        timerDiv.innerHTML = `Session ends at: ${sessionEnd}<br>Location sharing until: ${shareEnd}`;
+                    } catch (error) {
+                        console.error('[FRONTEND] Error in updateTimer:', error.message);
+                    }
                 }
-            }
+                updateTimer();
+                setInterval(updateTimer, 1000);
 
-            function calculateDistance(lat1, lon1, lat2, lon2) {
-                const R = 6371e3; // Earth radius in meters
-                const φ1 = lat1 * Math.PI / 180;
-                const φ2 = lat2 * Math.PI / 180;
-                const Δφ = (lat2 - lat1) * Math.PI / 180;
-                const Δλ = (lon2 - lon1) * Math.PI / 180;
-                const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                          Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                return R * c; // Distance in meters
-            }
-
-            function sendLocation() {
-                if (Date.now() > shareUntil) {
-                    console.log("sendLocation: Sharing expired for", userName, "at", new Date());
-                    updateMap();
-                    return;
+                function setMapToUserLocation() {
+                    console.log('[FRONTEND] setMapToUserLocation called');
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            position => {
+                                map.setView([position.coords.latitude, position.coords.longitude], 15);
+                                console.log('[FRONTEND] Map centered to:', position.coords.latitude, position.coords.longitude);
+                            },
+                            error => {
+                                console.error('[FRONTEND] Geolocation error in setMapToUserLocation:', error.message, 'Code:', error.code);
+                                alert("Location access denied. Please allow location permissions to share your position.");
+                            },
+                            { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+                        );
+                    } else {
+                        console.error('[FRONTEND] Geolocation not supported by browser');
+                        alert("Your browser doesn’t support geolocation. Location sharing won’t work.");
+                    }
                 }
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        position => {
-                            const newLat = position.coords.latitude;
-                            const newLng = position.coords.longitude;
-                            const accuracy = position.coords.accuracy;
 
-                            if (accuracy > MAX_ACCURACY_THRESHOLD) {
-                                console.log(`sendLocation: Ignoring update - accuracy too low (${accuracy}m)`);
-                                return;
-                            }
+                function calculateDistance(lat1, lon1, lat2, lon2) {
+                    console.log('[FRONTEND] calculateDistance called');
+                    try {
+                        const R = 6371e3; // Earth radius in meters
+                        const φ1 = lat1 * Math.PI / 180;
+                        const φ2 = lat2 * Math.PI / 180;
+                        const Δφ = (lat2 - lat1) * Math.PI / 180;
+                        const Δλ = (lon2 - lon1) * Math.PI / 180;
+                        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                        return R * c; // Distance in meters
+                    } catch (error) {
+                        console.error('[FRONTEND] Error in calculateDistance:', error.message);
+                        return Infinity;
+                    }
+                }
 
-                            if (lastKnownPosition) {
-                                const distance = calculateDistance(
-                                    lastKnownPosition.lat, lastKnownPosition.lng,
-                                    newLat, newLng
-                                );
-                                if (distance < MIN_DISTANCE_THRESHOLD) {
-                                    console.log(`sendLocation: Ignoring update - too close (${distance.toFixed(2)}m)`);
+                function sendLocation() {
+                    console.log('[FRONTEND] sendLocation called');
+                    if (Date.now() > shareUntil) {
+                        console.log('[FRONTEND] sendLocation: Sharing expired for', userName, 'at', new Date());
+                        updateMap();
+                        return;
+                    }
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            position => {
+                                const newLat = position.coords.latitude;
+                                const newLng = position.coords.longitude;
+                                const accuracy = position.coords.accuracy;
+
+                                if (accuracy > MAX_ACCURACY_THRESHOLD) {
+                                    console.log(`[FRONTEND] sendLocation: Ignoring update - accuracy too low (${accuracy}m)`);
                                     return;
                                 }
-                            }
 
-                            lastKnownPosition = { lat: newLat, lng: newLng };
-                            const payload = {
-                                sessionId: sessionId || null,
-                                lat: newLat,
-                                lng: newLng,
-                                userName,
-                                shareUntil,
-                                shareStart: Date.now(),
-                                clientId,
-                                accuracy
-                            };
-                            console.log("sendLocation: Sending:", payload);
-                            fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                            })
-                            .then(response => {
-                                if (!response.ok) throw new Error(`Update failed: ${response.status}`);
-                                return response.text();
-                            })
-                            .then(data => {
-                                console.log("sendLocation: Response:", data);
-                                updateMap();
-                            })
-                            .catch(error => {
-                                console.error("sendLocation: Fetch error:", error.message);
-                                alert("Failed to update location. Please check your network and try again.");
-                            });
-                        },
-                        error => {
-                            console.error("sendLocation: Geolocation error:", error.message, "Code:", error.code);
-                            alert("Location access denied. Please enable it in settings to see your marker.");
-                        },
-                        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-                    );
-                } else {
-                    console.error("Geolocation not supported by browser");
-                    alert("Your browser doesn’t support geolocation.");
-                }
-            }
-
-            function buildPinContent(name, color, isCreator) {
-                const icon = L.divIcon({
-                    className: 'custom-pin',
-                    html: `
-                        <div style="text-align: center;">
-                            <svg width="24" height="24" viewBox="0 0 24 24">
-                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" 
-                                      fill="${color}" stroke="#000000" stroke-width="1"/>
-                                <circle cx="12" cy="9" r="2.5" fill="#FFFFFF"/>
-                            </svg>
-                            <div class="leaflet-marker-label">${name}</div>
-                        </div>
-                    `,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 24],
-                    popupAnchor: [0, -24]
-                });
-                return icon;
-            }
-
-            function updateMap() {
-                const url = sessionId
-                    ? `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?sessionId=${sessionId}`
-                    : `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?userName=${encodeURIComponent(userName)}`;
-                console.log("updateMap: Fetching from:", url, "Current time:", new Date());
-                fetch(url)
-                    .then(response => {
-                        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log("updateMap: Locations received:", data.locations);
-                        markers.forEach(marker => map.removeLayer(marker));
-                        markers = [];
-                        polylines.forEach(poly => map.removeLayer(poly));
-                        polylines = [];
-
-                        updateUserControls(data.locations);
-                        data.locations.forEach(loc => {
-                            const isExpired = Date.now() > loc.shareUntil;
-                            console.log(`User: ${loc.name}, ShareUntil: ${new Date(loc.shareUntil)}, Active: ${loc.active}, Expired: ${isExpired}`);
-                            if (visibleUsers.has(loc.name)) {
-                                const color = isExpired ? '#808080' : loc.color;
-                                const marker = L.marker([loc.lat, loc.lng], {
-                                    title: loc.name,
-                                    icon: buildPinContent(loc.name, color, loc.name === creatorName)
-                                }).addTo(map);
-                                markers.push(marker);
-                                console.log(`Added marker for: ${loc.name}, Color: ${color}, Expired: ${isExpired}`);
-
-                                if (loc.history && loc.history.length > 1) {
-                                    const path = loc.history.map(h => [h.lat, h.lng]);
-                                    const polyline = L.polyline(path, {
-                                        color: isExpired ? '#808080' : loc.color,
-                                        opacity: 1.0,
-                                        weight: 2
-                                    }).addTo(map);
-                                    polylines.push(polyline);
-                                    console.log(`Added route for ${loc.name}, Points: ${loc.history.length}, Color: ${polyline.options.color}`);
+                                if (lastKnownPosition) {
+                                    const distance = calculateDistance(
+                                        lastKnownPosition.lat, lastKnownPosition.lng,
+                                        newLat, newLng
+                                    );
+                                    if (distance < MIN_DISTANCE_THRESHOLD) {
+                                        console.log(`[FRONTEND] sendLocation: Ignoring update - too close (${distance.toFixed(2)}m)`);
+                                        return;
+                                    }
                                 }
+
+                                lastKnownPosition = { lat: newLat, lng: newLng };
+                                const payload = {
+                                    sessionId: sessionId || null,
+                                    lat: newLat,
+                                    lng: newLng,
+                                    userName,
+                                    shareUntil,
+                                    shareStart: Date.now(),
+                                    clientId,
+                                    accuracy
+                                };
+                                console.log('[FRONTEND] sendLocation: Sending:', payload);
+                                fetch('https://location-share-backend-rubin-gosaliyas-projects.vercel.app/updateLocation', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload)
+                                })
+                                .then(response => {
+                                    console.log('[FRONTEND] sendLocation response status:', response.status);
+                                    if (!response.ok) throw new Error(`Update failed: ${response.status}`);
+                                    return response.text();
+                                })
+                                .then(data => {
+                                    console.log('[FRONTEND] sendLocation: Response:', data);
+                                    updateMap();
+                                })
+                                .catch(error => {
+                                    console.error('[FRONTEND] sendLocation: Fetch error:', error.message);
+                                    showError('Failed to update location. Please check your network.');
+                                });
+                            },
+                            error => {
+                                console.error('[FRONTEND] sendLocation: Geolocation error:', error.message, 'Code:', error.code);
+                                alert("Location access denied. Please enable it in settings to see your marker.");
+                            },
+                            { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+                        );
+                    } else {
+                        console.error('[FRONTEND] Geolocation not supported by browser');
+                        alert("Your browser doesn’t support geolocation.");
+                    }
+                }
+
+                function buildPinContent(name, color, isCreator) {
+                    console.log('[FRONTEND] buildPinContent called for:', name);
+                    try {
+                        const icon = L.divIcon({
+                            className: 'custom-pin',
+                            html: `
+                                <div style="text-align: center;">
+                                    <svg width="24" height="24" viewBox="0 0 24 24">
+                                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" 
+                                              fill="${color}" stroke="#000000" stroke-width="1"/>
+                                        <circle cx="12" cy="9" r="2.5" fill="#FFFFFF"/>
+                                    </svg>
+                                    <div class="leaflet-marker-label">${name}</div>
+                                </div>
+                            `,
+                            iconSize: [24, 24],
+                            iconAnchor: [12, 24],
+                            popupAnchor: [0, -24]
+                        });
+                        return icon;
+                    } catch (error) {
+                        console.error('[FRONTEND] Error in buildPinContent:', error.message);
+                        return L.divIcon({ html: `<div>${name}</div>` });
+                    }
+                }
+
+                function updateMap() {
+                    console.log('[FRONTEND] updateMap called');
+                    const url = sessionId
+                        ? `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?sessionId=${sessionId}`
+                        : `https://location-share-backend-rubin-gosaliyas-projects.vercel.app/getLocations?userName=${encodeURIComponent(userName)}`;
+                    console.log('[FRONTEND] updateMap: Fetching from:', url);
+                    fetch(url)
+                        .then(response => {
+                            console.log('[FRONTEND] updateMap response status:', response.status);
+                            if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('[FRONTEND] updateMap: Locations received:', data.locations);
+                            markers.forEach(marker => map.removeLayer(marker));
+                            markers = [];
+                            polylines.forEach(poly => map.removeLayer(poly));
+                            polylines = [];
+
+                            updateUserControls(data.locations);
+                            data.locations.forEach(loc => {
+                                const isExpired = Date.now() > loc.shareUntil;
+                                console.log(`[FRONTEND] User: ${loc.name}, ShareUntil: ${new Date(loc.shareUntil)}, Active: ${loc.active}, Expired: ${isExpired}`);
+                                if (visibleUsers.has(loc.name)) {
+                                    const color = isExpired ? '#808080' : loc.color;
+                                    const marker = L.marker([loc.lat, loc.lng], {
+                                        title: loc.name,
+                                        icon: buildPinContent(loc.name, color, loc.name === creatorName)
+                                    }).addTo(map);
+                                    markers.push(marker);
+                                    console.log(`[FRONTEND] Added marker for: ${loc.name}, Color: ${color}, Expired: ${isExpired}`);
+
+                                    if (loc.history && loc.history.length > 1) {
+                                        const path = loc.history.map(h => [h.lat, h.lng]);
+                                        const polyline = L.polyline(path, {
+                                            color: isExpired ? '#808080' : loc.color,
+                                            opacity: 1.0,
+                                            weight: 2
+                                        }).addTo(map);
+                                        polylines.push(polyline);
+                                        console.log(`[FRONTEND] Added route for ${loc.name}, Points: ${loc.history.length}, Color: ${polyline.options.color}`);
+                                    }
+                                }
+                            });
+
+                            if (visibleUsers.has(creatorName)) {
+                                const visibleLocations = data.locations.filter(loc => visibleUsers.has(loc.name));
+                                if (visibleLocations.length > 1) {
+                                    const bounds = L.latLngBounds(visibleLocations.map(loc => [loc.lat, loc.lng]));
+                                    map.fitBounds(bounds);
+                                    console.log('[FRONTEND] Map zoomed to bounds of visible users:', bounds.toBBoxString());
+                                } else if (visibleLocations.length === 1) {
+                                    map.setView([visibleLocations[0].lat, visibleLocations[0].lng], 15);
+                                    console.log('[FRONTEND] Map centered on single visible user:', visibleLocations[0].name);
+                                }
+                            }
+                        })
+                        .catch(error => {
+                            console.error('[FRONTEND] updateMap: Error:', error.message);
+                            showError('Failed to load locations. Please check your network.');
+                        });
+                }
+
+                function updateUserControls(locations) {
+                    console.log('[FRONTEND] updateUserControls called with locations:', locations);
+                    try {
+                        const controlsDiv = document.getElementById('user-controls');
+                        controlsDiv.innerHTML = '';
+
+                        const sortedLocations = locations.sort((a, b) => {
+                            if (userName === creatorName) {
+                                if (a.name === creatorName) return -1;
+                                if (b.name === creatorName) return 1;
+                                return a.name.localeCompare(b.name);
+                            } else {
+                                if (a.name === creatorName) return -1;
+                                if (b.name === creatorName) return 1;
+                                if (a.name === userName) return -1;
+                                if (b.name === userName) return 1;
+                                return a.name.localeCompare(b.name);
                             }
                         });
 
-                        if (visibleUsers.has(creatorName)) {
-                            const visibleLocations = data.locations.filter(loc => visibleUsers.has(loc.name));
-                            if (visibleLocations.length > 1) {
-                                const bounds = L.latLngBounds(visibleLocations.map(loc => [loc.lat, loc.lng]));
-                                map.fitBounds(bounds);
-                                console.log("Map zoomed to bounds of visible users:", bounds.toBBoxString());
-                            } else if (visibleLocations.length === 1) {
-                                map.setView([visibleLocations[0].lat, visibleLocations[0].lng], 15);
-                                console.log("Map centered on single visible user:", visibleLocations[0].name);
+                        sortedLocations.forEach(loc => {
+                            const isExpired = Date.now() > loc.shareUntil;
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.id = `user-${loc.name}`;
+                            checkbox.className = 'user-checkbox';
+                            checkbox.checked = visibleUsers.has(loc.name);
+                            checkbox.addEventListener('change', () => {
+                                if (checkbox.checked) {
+                                    visibleUsers.add(loc.name);
+                                } else {
+                                    visibleUsers.delete(loc.name);
+                                }
+                                const hoursLeft = (shareUntil - Date.now()) / 3600000;
+                                if (hoursLeft > 0) {
+                                    setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
+                                    console.log('[FRONTEND] Updated visibleUsers cookie:', Array.from(visibleUsers));
+                                }
+                                updateMap();
+                            });
+
+                            const label = document.createElement('label');
+                            label.htmlFor = `user-${loc.name}`;
+                            const wrapper = document.createElement('div');
+                            if (isExpired) {
+                                const startTime = new Date(loc.shareStart).toLocaleTimeString();
+                                const endTime = new Date(loc.shareUntil).toLocaleTimeString();
+                                label.textContent = `${loc.name} (Shared: ${startTime} - ${endTime})`;
+                                wrapper.className = 'expired-user';
+                                console.log(`[FRONTEND] User ${loc.name} marked as expired`);
+                            } else {
+                                label.textContent = loc.name;
                             }
-                        }
-                    })
-                    .catch(error => console.error("updateMap: Error:", error.message));
-            }
-
-            function updateUserControls(locations) {
-                const controlsDiv = document.getElementById('user-controls');
-                controlsDiv.innerHTML = '';
-                console.log("updateUserControls: Processing locations:", locations);
-
-                const sortedLocations = locations.sort((a, b) => {
-                    if (userName === creatorName) {
-                        if (a.name === creatorName) return -1;
-                        if (b.name === creatorName) return 1;
-                        return a.name.localeCompare(b.name);
-                    } else {
-                        if (a.name === creatorName) return -1;
-                        if (b.name === creatorName) return 1;
-                        if (a.name === userName) return -1;
-                        if (b.name === userName) return 1;
-                        return a.name.localeCompare(b.name);
+                            wrapper.appendChild(checkbox);
+                            wrapper.appendChild(label);
+                            controlsDiv.appendChild(wrapper);
+                            console.log('[FRONTEND] Added checkbox for:', loc.name, 'Checked:', checkbox.checked, 'Expired:', isExpired);
+                        });
+                    } catch (error) {
+                        console.error('[FRONTEND] Error in updateUserControls:', error.message);
+                        showError('Failed to update user controls.');
                     }
-                });
+                }
 
-                sortedLocations.forEach(loc => {
-                    const isExpired = Date.now() > loc.shareUntil;
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.id = `user-${loc.name}`;
-                    checkbox.className = 'user-checkbox';
-                    checkbox.checked = visibleUsers.has(loc.name);
-                    checkbox.addEventListener('change', () => {
-                        if (checkbox.checked) {
-                            visibleUsers.add(loc.name);
-                        } else {
-                            visibleUsers.delete(loc.name);
-                        }
-                        const hoursLeft = (shareUntil - Date.now()) / 3600000;
-                        if (hoursLeft > 0) {
-                            setCookie(`visibleUsers_${sessionId}`, JSON.stringify(Array.from(visibleUsers)), hoursLeft);
-                            console.log("Updated visibleUsers cookie:", Array.from(visibleUsers));
-                        }
-                        updateMap();
-                    });
-
-                    const label = document.createElement('label');
-                    label.htmlFor = `user-${loc.name}`;
-                    const wrapper = document.createElement('div');
-                    if (isExpired) {
-                        const startTime = new Date(loc.shareStart).toLocaleTimeString();
-                        const endTime = new Date(loc.shareUntil).toLocaleTimeString();
-                        label.textContent = `${loc.name} (Shared: ${startTime} - ${endTime})`;
-                        wrapper.className = 'expired-user';
-                        console.log(`User ${loc.name} marked as expired`);
-                    } else {
-                        label.textContent = loc.name;
-                    }
-                    wrapper.appendChild(checkbox);
-                    wrapper.appendChild(label);
-                    controlsDiv.appendChild(wrapper);
-                    console.log("Added checkbox for:", loc.name, "Checked:", checkbox.checked, "Expired:", isExpired);
-                });
-            }
-
-            checkSession();
-        </script>
+                console.log('[FRONTEND] Initializing app');
+                checkSession();
+    </script>
 </body>
 </html>
