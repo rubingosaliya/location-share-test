@@ -505,9 +505,13 @@
                         showError('Failed to update user controls.');
                     }
                 }
+            } // End initMap
+            console.log('[FRONTEND] initMap defined');
+        } // End outer try in initMap
 
-                console.log('[FRONTEND] Initializing app');
-                checkSession();
+        console.log('[FRONTEND] Initializing app');
+        checkSession();
+        // Line ~434: Error reported here
     </script>
 </body>
 </html>
